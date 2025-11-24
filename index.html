@@ -285,8 +285,8 @@
                 
                 const totalWildCopies = Math.max(0, totalWildCopiesBeforeReduction - wildUnitsTaken - wildUnitsBenched);
                 
-                // Wild boost calculation
-                const wildBoost = (pveRoundEnabled && targetIsWild) ? 
+                // Wild boost calculation - applies during PVE regardless of target type
+                const wildBoost = pveRoundEnabled ? 
                     (0.05 + (wildUnitsOwned * 0.01)) : 0;
                 
                 // Base probability calculation
@@ -1099,7 +1099,7 @@
                                 <div className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 backdrop-blur-xl rounded-3xl p-6 border border-yellow-500/30 shadow-2xl">
                                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
                                         <span className="text-2xl">💰</span>
-                                        Gold Cost ({probabilities.copiesStillNeeded} more)
+                                        Gold Cost to {evolutionGoal === 'firstEvo' ? '2★' : '3★'}
                                     </h3>
                                     {probabilities.wildTargetImpossible ? (
                                         <div className="text-sm text-red-400 font-semibold">
@@ -1124,8 +1124,9 @@
                                                 <span className="font-bold text-xl text-yellow-400">{probabilities.goldFor90}g</span>
                                             </div>
                                             <div className="text-xs text-gray-400 mt-2 text-center">
-                                                {evolutionGoal === 'firstEvo' ? 'First evolution' : 'Max evolution'} 
-                                                {copiesOwned > 0 && ` (${copiesOwned}/${probabilities.totalCopiesNeeded})`}
+                                                {evolutionGoal === 'firstEvo' ? 'First evolution (2★)' : 'Max evolution (3★)'}
+                                                {copiesOwned > 0 && ` • ${copiesOwned}/${probabilities.totalCopiesNeeded} owned`}
+                                                {probabilities.copiesStillNeeded > 0 && ` • ${probabilities.copiesStillNeeded} more needed`}
                                                 {dittoEnabled && ' • Ditto included'}
                                                 {pveRoundEnabled && targetIsWild && ' • Wild boost'}
                                             </div>
