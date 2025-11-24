@@ -8,7 +8,12 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -16,14 +21,473 @@
                 sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
+            background: linear-gradient(135deg, #000000 0%, #0f172a 50%, #1e3a5f 100%);
+            min-height: 100vh;
+        }
+        
+        /* Navigation Styles */
+        .nav-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+            padding: 0.75rem 2rem;
+        }
+        
+        .nav-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-brand {
+            font-size: 1.25rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #38bdf8, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .nav-dropdown {
+            position: relative;
+        }
+        
+        .nav-dropdown-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 9999px;
+            color: #38bdf8;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .nav-dropdown-btn:hover {
+            background: rgba(56, 189, 248, 0.2);
+            border-color: rgba(56, 189, 248, 0.5);
+        }
+        
+        .nav-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            right: 0;
+            min-width: 220px;
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 1rem;
+            padding: 0.5rem;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        }
+        
+        .nav-dropdown.open .nav-dropdown-menu {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+        
+        .nav-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            color: #94a3b8;
+            text-decoration: none;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .nav-dropdown-item:hover {
+            background: rgba(56, 189, 248, 0.1);
+            color: #38bdf8;
+        }
+        
+        .nav-dropdown-item.active {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+        
+        .nav-dropdown-item-icon {
+            width: 20px;
+            height: 20px;
+            opacity: 0.7;
+        }
+        
+        .nav-dropdown-divider {
+            height: 1px;
+            background: rgba(56, 189, 248, 0.1);
+            margin: 0.5rem 0;
+        }
+        
+        /* Page Container & Transitions */
+        .page-container {
+            display: flex;
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 100vh;
+            padding-top: 60px;
+        }
+        
+        .page {
+            min-width: 100vw;
+            flex-shrink: 0;
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+        
+        .page.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        /* Page positions */
+        .page-container[data-active-page="calculator"] {
+            transform: translateX(0);
+        }
+        
+        .page-container[data-active-page="analytics"] {
+            transform: translateX(-100vw);
+        }
+        
+        .page-container[data-active-page="features"] {
+            transform: translateX(-200vw);
+        }
+        
+        /* Analytics Page Styles */
+        #page-analytics {
+            background: linear-gradient(135deg, #000000 0%, #0f172a 50%, #1e3a5f 100%);
+            color: white;
+            padding: 2rem;
+        }
+        
+        .analytics-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .analytics-header h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #38bdf8, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        .chart-card {
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.8));
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+        
+        .chart-card h3 {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #38bdf8;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 350px;
+            position: relative;
+        }
+        
+        /* Chart Tooltip */
+        .chart-tooltip {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.95);
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            color: white;
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        
+        .chart-tooltip.visible {
+            opacity: 1;
+        }
+        
+        /* Loading state for charts */
+        .chart-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #64748b;
+        }
+        
+        .chart-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(56, 189, 248, 0.2);
+            border-top-color: #38bdf8;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Axis and grid styles */
+        .axis text {
+            fill: #64748b;
+            font-size: 11px;
+        }
+        
+        .axis line,
+        .axis path {
+            stroke: #334155;
+        }
+        
+        .grid line {
+            stroke: #1e293b;
+            stroke-dasharray: 2, 2;
+        }
+        
+        /* Legend */
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1rem;
+            justify-content: center;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        
+        /* No data state */
+        .no-data {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #64748b;
+            text-align: center;
+        }
+        
+        .no-data-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-container {
+                height: 300px;
+            }
+            
+            .nav-brand {
+                font-size: 1rem;
+            }
         }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <!-- Navigation -->
+    <nav class="nav-container">
+        <div class="nav-content">
+            <div class="nav-brand">PAC Analytics</div>
+            <div class="nav-dropdown" id="navDropdown">
+                <button class="nav-dropdown-btn" onclick="toggleNavDropdown()">
+                    <span id="currentPageLabel">Calculator</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </button>
+                <div class="nav-dropdown-menu">
+                    <div class="nav-dropdown-item active" data-page="calculator" onclick="navigateTo('calculator')">
+                        <svg class="nav-dropdown-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect width="16" height="20" x="4" y="2" rx="2"/>
+                            <line x1="8" x2="16" y1="6" y2="6"/>
+                        </svg>
+                        <span>Calculator</span>
+                    </div>
+                    <div class="nav-dropdown-item" data-page="analytics" onclick="navigateTo('analytics')">
+                        <svg class="nav-dropdown-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/>
+                            <path d="M18 17V9"/>
+                            <path d="M13 17V5"/>
+                            <path d="M8 17v-3"/>
+                        </svg>
+                        <span>Analytics Dashboard</span>
+                    </div>
+                    <div class="nav-dropdown-divider"></div>
+                    <div class="nav-dropdown-item" data-page="features" onclick="navigateTo('features')">
+                        <svg class="nav-dropdown-item-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 1v6m0 6v6m11-7h-6m-6 0H1"/>
+                        </svg>
+                        <span>More Features</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Page Container -->
+    <div class="page-container" id="pageContainer" data-active-page="calculator">
+        <!-- Calculator Page -->
+        <div class="page" id="page-calculator">
+            <div id="root"></div>
+        </div>
+        
+        <!-- Analytics Page -->
+        <div class="page" id="page-analytics">
+            <div id="analytics-root">
+                <div class="analytics-header">
+                    <h1>📊 Analytics Dashboard</h1>
+                    <p style="color: #64748b;">Real-time probability analysis and decision support</p>
+                </div>
+                <div class="analytics-grid" id="analyticsGrid">
+                    <!-- Charts will be mounted here by analytics.js -->
+                    <div class="chart-card">
+                        <h3>📈 Probability Curves</h3>
+                        <div class="chart-container" id="chart-probability-curves">
+                            <div class="chart-loading">
+                                <div class="chart-loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>💰 Gold ROI Analysis</h3>
+                        <div class="chart-container" id="chart-gold-roi">
+                            <div class="chart-loading">
+                                <div class="chart-loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🌪️ Sensitivity Analysis</h3>
+                        <div class="chart-container" id="chart-tornado">
+                            <div class="chart-loading">
+                                <div class="chart-loading-spinner"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Future Features Page -->
+        <div class="page" id="page-features">
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; color: white; text-align: center; padding: 2rem;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">🚀</div>
+                <h1 style="font-size: 2rem; margin-bottom: 0.5rem;">More Features Coming Soon</h1>
+                <p style="color: #64748b; max-width: 400px;">
+                    This space is reserved for future enhancements. Stay tuned!
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Navigation Scripts -->
+    <script>
+        // Navigation state
+        let currentPage = 'calculator';
+        let dropdownOpen = false;
+        
+        function toggleNavDropdown() {
+            const dropdown = document.getElementById('navDropdown');
+            dropdownOpen = !dropdownOpen;
+            dropdown.classList.toggle('open', dropdownOpen);
+        }
+        
+        function navigateTo(page) {
+            if (page === currentPage) {
+                toggleNavDropdown();
+                return;
+            }
+            
+            currentPage = page;
+            
+            // Update page container
+            const container = document.getElementById('pageContainer');
+            container.setAttribute('data-active-page', page);
+            
+            // Update nav label
+            const labels = { calculator: 'Calculator', analytics: 'Analytics Dashboard', features: 'More Features' };
+            document.getElementById('currentPageLabel').textContent = labels[page] || page;
+            
+            // Update active state in menu
+            document.querySelectorAll('.nav-dropdown-item[data-page]').forEach(item => {
+                item.classList.toggle('active', item.dataset.page === page);
+            });
+            
+            // Close dropdown
+            dropdownOpen = false;
+            document.getElementById('navDropdown').classList.remove('open');
+            
+            // Trigger analytics render if navigating to analytics
+            if (page === 'analytics' && window.renderAnalytics) {
+                setTimeout(() => window.renderAnalytics(), 100);
+            }
+        }
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('navDropdown');
+            if (!dropdown.contains(e.target) && dropdownOpen) {
+                dropdownOpen = false;
+                dropdown.classList.remove('open');
+            }
+        });
+    </script>
     
     <script type="text/babel">
-        const { useState, useMemo } = React;
+        const { useState, useMemo, useEffect, useCallback } = React;
 
         // Lucide icons as inline SVG components
         const Calculator = ({ className }) => (
@@ -437,6 +901,69 @@
                 epic: 'text-purple-400',
                 ultra: 'text-red-400'
             };
+
+            // Expose state to window for external analytics (debounced)
+            useEffect(() => {
+                const timeoutId = setTimeout(() => {
+                    window.calculatorState = {
+                        // Core settings
+                        level,
+                        targetRarity,
+                        targetEvo,
+                        refreshes,
+                        evolutionGoal,
+                        copiesOwned,
+                        copiesTaken,
+                        benchUnits,
+                        dittoEnabled,
+                        
+                        // Add picks
+                        round5Enabled,
+                        round5AddPicks,
+                        round8Enabled,
+                        round8AddPicks,
+                        round11Enabled,
+                        round11AddPicks,
+                        
+                        // Portal regionals
+                        portalRegionals,
+                        
+                        // Wild mechanics
+                        targetIsWild,
+                        pveRoundEnabled,
+                        wildUnitsOwned,
+                        wildUnitsTaken,
+                        wildUnitsBenched,
+                        wildAddPicks,
+                        wildRegionals,
+                        
+                        // Calculated values
+                        probabilities,
+                        calculateTotalPool,
+                        totalWildCounts,
+                        
+                        // Static game data
+                        baseGamePools,
+                        poolCopies,
+                        shopOdds,
+                        baseWildCounts
+                    };
+                    
+                    // Dispatch event for external listeners
+                    window.dispatchEvent(new CustomEvent('calculatorStateChange', {
+                        detail: window.calculatorState
+                    }));
+                }, 50); // 50ms debounce
+                
+                return () => clearTimeout(timeoutId);
+            }, [
+                level, targetRarity, targetEvo, refreshes, evolutionGoal, copiesOwned,
+                copiesTaken, benchUnits, dittoEnabled, round5Enabled, round5AddPicks,
+                round8Enabled, round8AddPicks, round11Enabled, round11AddPicks,
+                portalRegionals, targetIsWild, pveRoundEnabled, wildUnitsOwned,
+                wildUnitsTaken, wildUnitsBenched, wildAddPicks, wildRegionals,
+                probabilities, calculateTotalPool, totalWildCounts
+            ]);
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-blue-950 text-white p-8">
@@ -1202,6 +1729,205 @@
         };
 
         ReactDOM.render(<PokemonAutoChessCalculator />, document.getElementById('root'));
+    </script>
+    
+    <!-- Feature Loader: Dynamically loads external feature files -->
+    <script>
+        (function() {
+            // List of optional feature files to load
+            // Add new features here without modifying anything else
+            const features = [
+                { src: 'analytics.js', type: 'text/babel', required: false }
+                // Add more features: { src: 'feature-name.js', type: 'text/babel', required: false }
+            ];
+            
+            // Load features after a short delay to ensure calculator is ready
+            setTimeout(() => {
+                features.forEach(feature => {
+                    const script = document.createElement('script');
+                    script.src = feature.src;
+                    script.type = feature.type || 'text/javascript';
+                    
+                    script.onload = () => {
+                        console.log(`✓ Feature loaded: ${feature.src}`);
+                    };
+                    
+                    script.onerror = () => {
+                        if (feature.required) {
+                            console.error(`✗ Required feature failed to load: ${feature.src}`);
+                        } else {
+                            console.log(`○ Optional feature not available: ${feature.src}`);
+                        }
+                    };
+                    
+                    document.body.appendChild(script);
+                });
+            }, 100);
+            
+            // Helper function to load features dynamically at runtime
+            window.loadFeature = function(src, type = 'text/javascript') {
+                return new Promise((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = src;
+                    script.type = type;
+                    script.onload = resolve;
+                    script.onerror = reject;
+                    document.body.appendChild(script);
+                });
+            };
+            
+            // Expose utility functions for analytics
+            window.analyticsUtils = {
+                // Calculate probability curve data points
+                getProbabilityCurve: function(maxRefreshes = 100) {
+                    const state = window.calculatorState;
+                    if (!state || !state.probabilities) return [];
+                    
+                    const perRefreshProb = state.dittoEnabled ? 
+                        state.probabilities.perRefreshWithDitto / 100 : 
+                        state.probabilities.perRefresh / 100;
+                    
+                    const data = [];
+                    for (let r = 1; r <= maxRefreshes; r++) {
+                        const cumulative = 1 - Math.pow(1 - perRefreshProb, r);
+                        data.push({
+                            refreshes: r,
+                            gold: r * 2,
+                            probability: cumulative * 100,
+                            expectedCopies: r * 6 * (state.probabilities.perSlot / 100)
+                        });
+                    }
+                    return data;
+                },
+                
+                // Calculate level comparison data
+                getLevelComparison: function() {
+                    const state = window.calculatorState;
+                    if (!state) return [];
+                    
+                    const data = [];
+                    for (let lvl = 1; lvl <= 9; lvl++) {
+                        const rarityChance = state.shopOdds[lvl][state.targetRarity] / 100;
+                        const pool = state.calculateTotalPool[state.targetRarity];
+                        const poolSize = state.targetEvo === 'twoStar' ? pool.twoStarTotal : pool.threeStarTotal;
+                        const otherPool = state.targetEvo === 'twoStar' ? pool.threeStarTotal : pool.twoStarTotal;
+                        const totalPool = poolSize + otherPool - state.benchUnits;
+                        const targetCopies = state.probabilities.targetCopies;
+                        
+                        const perSlot = totalPool > 0 ? rarityChance * (targetCopies / totalPool) : 0;
+                        const perRefresh = 1 - Math.pow(1 - perSlot, 6);
+                        
+                        data.push({
+                            level: lvl,
+                            rarityChance: rarityChance * 100,
+                            perSlot: perSlot * 100,
+                            perRefresh: perRefresh * 100
+                        });
+                    }
+                    return data;
+                },
+                
+                // Calculate sensitivity data for tornado chart
+                getSensitivityData: function() {
+                    const state = window.calculatorState;
+                    if (!state || !state.probabilities) return [];
+                    
+                    const baseProb = state.probabilities.perRefresh;
+                    const factors = [];
+                    
+                    // Level impact (+1 level)
+                    if (state.level < 9) {
+                        const levelData = this.getLevelComparison();
+                        const nextLevelProb = levelData[state.level]?.perRefresh || 0;
+                        factors.push({
+                            name: 'Level +1',
+                            impact: nextLevelProb - baseProb,
+                            type: nextLevelProb >= baseProb ? 'positive' : 'negative'
+                        });
+                    }
+                    
+                    // Ditto impact
+                    const dittoImpact = state.probabilities.perRefreshWithDitto - state.probabilities.perRefresh;
+                    factors.push({
+                        name: 'Include Ditto',
+                        impact: dittoImpact,
+                        type: 'positive'
+                    });
+                    
+                    // Copies taken impact (if any taken)
+                    if (state.copiesTaken > 0) {
+                        factors.push({
+                            name: `Copies Taken (${state.copiesTaken})`,
+                            impact: -Math.abs(baseProb * (state.copiesTaken / state.probabilities.maxTargetCopies) * 0.5),
+                            type: 'negative'
+                        });
+                    }
+                    
+                    // Wild boost impact (if PVE)
+                    if (state.pveRoundEnabled && state.targetIsWild) {
+                        factors.push({
+                            name: 'Wild Boost (PvE)',
+                            impact: state.probabilities.wildBoost * 0.5,
+                            type: 'positive'
+                        });
+                    } else if (state.pveRoundEnabled && !state.targetIsWild) {
+                        factors.push({
+                            name: 'Wild Penalty (PvE)',
+                            impact: -state.probabilities.wildBoost * 0.3,
+                            type: 'negative'
+                        });
+                    }
+                    
+                    // Bench impact
+                    if (state.benchUnits > 0) {
+                        factors.push({
+                            name: `Bench Units (${state.benchUnits})`,
+                            impact: baseProb * (state.benchUnits / state.probabilities.totalPoolSize) * 2,
+                            type: 'positive'
+                        });
+                    }
+                    
+                    // Sort by absolute impact
+                    return factors.sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact));
+                },
+                
+                // Calculate gold ROI data
+                getGoldROI: function(maxGold = 200) {
+                    const state = window.calculatorState;
+                    if (!state || !state.probabilities) return [];
+                    
+                    const perRefreshProb = state.dittoEnabled ?
+                        state.probabilities.perRefreshWithDitto / 100 :
+                        state.probabilities.perRefresh / 100;
+                    
+                    const perSlotProb = state.dittoEnabled ?
+                        state.probabilities.perSlotWithDitto / 100 :
+                        state.probabilities.perSlot / 100;
+                    
+                    const data = [];
+                    for (let gold = 2; gold <= maxGold; gold += 2) {
+                        const refreshes = gold / 2;
+                        const cumulative = 1 - Math.pow(1 - perRefreshProb, refreshes);
+                        const expectedCopies = refreshes * 6 * perSlotProb;
+                        
+                        data.push({
+                            gold: gold,
+                            refreshes: refreshes,
+                            probability: cumulative * 100,
+                            expectedCopies: expectedCopies,
+                            copiesNeeded: state.probabilities.copiesStillNeeded,
+                            efficiency: expectedCopies / gold // copies per gold
+                        });
+                    }
+                    return data;
+                }
+            };
+            
+            console.log('📊 PAC Analytics Framework initialized');
+            console.log('   → Calculator state exposed at window.calculatorState');
+            console.log('   → Analytics utilities at window.analyticsUtils');
+            console.log('   → Listen for "calculatorStateChange" events');
+        })();
     </script>
 </body>
 </html>
