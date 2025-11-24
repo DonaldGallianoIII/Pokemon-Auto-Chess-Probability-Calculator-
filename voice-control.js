@@ -2,16 +2,12 @@
  * PAC Analytics Voice Control System
  * Single unified voice interface - top right placement
  * 
- * v4 PATCHES:
- * - Fixed premature command processing (accumulates until release)
- * - Converts spoken numbers ("seven") to digits ("7")
- * - Fixed regex capture bug: "level 5 scouted 2" no longer becomes "level 5 scouted 5"
- * - Lowered confidence threshold to 0.35
- * - Added "ditto on/off" patterns
- * - Added "to/too" → "2" conversion
- * - Added PVE round command
- * - Fixed spacebar scrolling page
- * - State persistence: only updates fields you mention
+ * v5 PATCHES:
+ * - CHUNK-BASED PARSING: Order doesn't matter, "pve on scouting 4 copy 2" all works
+ * - Added "wild target" / "target wild" / "target is wild"
+ * - Fixed "copy 4" (was only "copies")
+ * - Expanded ditto/pve patterns (include, exclude, use, no)
+ * - All previous fixes included
  */
 
 (function() {
@@ -46,7 +42,6 @@
     
     /**
      * Word to Number Conversion
-     * v4: Added "to" and "too" → "2"
      */
     const wordToNum = {
         'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
@@ -54,12 +49,11 @@
         'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
         'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
         'eighteen': '18', 'nineteen': '19', 'twenty': '20',
-        'to': '2', 'too': '2'  // v4: Common speech recognition outputs
+        'to': '2', 'too': '2'
     };
     
     function convertWordsToNumbers(text) {
         let result = text.toLowerCase();
-        // Sort by length descending so "fourteen" matches before "four"
         const sortedWords = Object.keys(wordToNum).sort((a, b) => b.length - a.length);
         for (const word of sortedWords) {
             result = result.replace(new RegExp(`\\b${word}\\b`, 'g'), wordToNum[word]);
@@ -80,7 +74,7 @@
         createUI();
         setupEvents();
         
-        console.log('🎤 Voice Control v4 ready - Press SPACE to speak');
+        console.log('🎤 Voice Control v5 ready - Press SPACE to speak');
     }
     
     /**
@@ -240,9 +234,10 @@
         help.id = 'voice-help';
         help.innerHTML = `
             <div style="color: #ef4444; font-weight: 700; margin-bottom: 0.5rem;">QUICK COMMANDS:</div>
-            <div>• "level 7 rare have 3"</div>
-            <div>• "scouted 4" / "bench 5"</div>
-            <div>• "ditto on" / "pve round"</div>
+            <div>• "level 7 rare copy 3"</div>
+            <div>• "scouted 4 bench 5"</div>
+            <div>• "ditto on pve round"</div>
+            <div>• "wild target"</div>
             <div style="margin-top: 0.5rem;">Hold SPACE or hold button</div>
         `;
         
@@ -257,7 +252,6 @@
     
     /**
      * Setup Events
-     * v4: Fixed spacebar scrolling with capture phase
      */
     function setupEvents() {
         button.addEventListener('mousedown', (e) => {
@@ -270,7 +264,6 @@
             if (isListening) stopListening();
         });
         
-        // v4: Capture phase to prevent spacebar from scrolling
         window.addEventListener('keydown', (e) => {
             if (e.key === ' ' && !isInputFocused()) {
                 e.preventDefault();
@@ -447,158 +440,213 @@
     }
     
     /**
-     * Helper: Extract number after keyword (preferred) or before keyword (fallback)
-     */
-    function extractNumber(text, keywords, availableNumbers) {
-        const keywordPattern = keywords.join('|');
-        
-        // FIRST: Try "keyword NUMBER" pattern (preferred)
-        const afterMatch = text.match(new RegExp(`(?:${keywordPattern})\\s*(\\d+)`, 'i'));
-        if (afterMatch) {
-            const num = parseInt(afterMatch[1]);
-            if (availableNumbers.includes(num)) {
-                return num;
-            }
-        }
-        
-        // SECOND: Try "NUMBER keyword" pattern (fallback)
-        const beforeMatch = text.match(new RegExp(`(\\d+)\\s*(?:${keywordPattern})`, 'i'));
-        if (beforeMatch) {
-            const num = parseInt(beforeMatch[1]);
-            if (availableNumbers.includes(num)) {
-                return num;
-            }
-        }
-        
-        return null;
-    }
-    
-    /**
-     * Parse Command - Natural Language
-     * v4: Added ditto on/off patterns, PVE round command
+     * CHUNK-BASED PARSER v5
+     * Tokenizes input and processes chunks independently
      */
     function parseCommand(text) {
         const commands = [];
-        const original = text.toLowerCase();
-        const allNumbers = original.match(/\d+/g)?.map(n => parseInt(n)) || [];
-        let availableNumbers = [...allNumbers];
+        const original = text.toLowerCase().trim();
+        const tokens = original.split(/\s+/);
         
-        console.log(`📝 Parsing: "${original}" → Numbers: [${availableNumbers}]`);
+        console.log(`📝 Parsing tokens: [${tokens.join(', ')}]`);
         
-        // LEVEL
-        if (/level|lvl|lv\b/i.test(original)) {
-            if (/up/i.test(original)) {
-                commands.push({ type: 'level', value: 'up', feedback: 'Level up' });
-            } else if (/down/i.test(original)) {
-                commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
-            } else {
-                const levelNum = extractNumber(original, ['level', 'lvl', 'lv'], availableNumbers);
-                
-                if (levelNum && levelNum >= 1 && levelNum <= 9) {
-                    commands.push({ type: 'level', value: levelNum, feedback: `Level ${levelNum}` });
-                    const idx = availableNumbers.indexOf(levelNum);
-                    if (idx !== -1) availableNumbers.splice(idx, 1);
+        // Track which tokens have been consumed
+        const consumed = new Array(tokens.length).fill(false);
+        
+        // === TOGGLE COMMANDS (keyword + on/off) ===
+        const toggles = {
+            'ditto': { 
+                onWords: ['on', 'enable', 'enabled', 'add', 'include', 'use', 'with', 'yes'],
+                offWords: ['off', 'disable', 'disabled', 'remove', 'exclude', 'no', 'without'],
+                type: 'ditto'
+            },
+            'pve': {
+                onWords: ['on', 'enable', 'enabled', 'add', 'include', 'use', 'round', 'yes'],
+                offWords: ['off', 'disable', 'disabled', 'remove', 'exclude', 'no'],
+                type: 'pve'
+            }
+        };
+        
+        for (let i = 0; i < tokens.length; i++) {
+            if (consumed[i]) continue;
+            const token = tokens[i];
+            
+            for (const [keyword, config] of Object.entries(toggles)) {
+                if (token === keyword) {
+                    // Check word before
+                    if (i > 0 && !consumed[i-1]) {
+                        if (config.onWords.includes(tokens[i-1])) {
+                            commands.push({ type: config.type, value: true, feedback: `${keyword} on` });
+                            consumed[i] = consumed[i-1] = true;
+                            break;
+                        }
+                        if (config.offWords.includes(tokens[i-1])) {
+                            commands.push({ type: config.type, value: false, feedback: `${keyword} off` });
+                            consumed[i] = consumed[i-1] = true;
+                            break;
+                        }
+                    }
+                    // Check word after
+                    if (i < tokens.length - 1 && !consumed[i+1]) {
+                        if (config.onWords.includes(tokens[i+1])) {
+                            commands.push({ type: config.type, value: true, feedback: `${keyword} on` });
+                            consumed[i] = consumed[i+1] = true;
+                            break;
+                        }
+                        if (config.offWords.includes(tokens[i+1])) {
+                            commands.push({ type: config.type, value: false, feedback: `${keyword} off` });
+                            consumed[i] = consumed[i+1] = true;
+                            break;
+                        }
+                    }
                 }
-            }
-        } else if (availableNumbers.length === 1 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
-            // Single number with no context = assume level
-            if (!/(own|have|got|scout|bench|refresh|star|copies|ditto|pve)/i.test(original)) {
-                commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
-                availableNumbers = [];
-            }
-        } else if (availableNumbers.length > 0 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
-            // First number might be level if nothing precedes it
-            const firstNumIndex = original.indexOf(availableNumbers[0].toString());
-            const beforeNum = original.substring(0, firstNumIndex);
-            if (!/(own|have|got|scout|bench|refresh|ditto|pve)/i.test(beforeNum)) {
-                commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
-                availableNumbers.shift();
             }
         }
         
-        // RARITY
+        // === WILD TARGET ===
+        for (let i = 0; i < tokens.length; i++) {
+            if (consumed[i]) continue;
+            
+            // "wild target" or "target wild" or "wild"
+            if (tokens[i] === 'wild') {
+                commands.push({ type: 'wild', value: true, feedback: 'Wild target' });
+                consumed[i] = true;
+                // Also consume "target" if adjacent
+                if (i > 0 && tokens[i-1] === 'target' && !consumed[i-1]) consumed[i-1] = true;
+                if (i < tokens.length - 1 && tokens[i+1] === 'target' && !consumed[i+1]) consumed[i+1] = true;
+            }
+            // "target is wild"
+            if (tokens[i] === 'target' && tokens[i+1] === 'is' && tokens[i+2] === 'wild') {
+                commands.push({ type: 'wild', value: true, feedback: 'Wild target' });
+                consumed[i] = consumed[i+1] = consumed[i+2] = true;
+            }
+        }
+        
+        // === KEYWORD + NUMBER COMMANDS ===
+        const numberCommands = {
+            'level': { type: 'level', feedback: n => `Level ${n}`, validate: n => n >= 1 && n <= 9 },
+            'lvl': { type: 'level', feedback: n => `Level ${n}`, validate: n => n >= 1 && n <= 9 },
+            'lv': { type: 'level', feedback: n => `Level ${n}`, validate: n => n >= 1 && n <= 9 },
+            'scout': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'scouted': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'scouting': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'seen': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'taken': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'opponent': { type: 'scouting', feedback: n => `Scout ${n}` },
+            'bench': { type: 'bench', feedback: n => `Bench ${n}` },
+            'benched': { type: 'bench', feedback: n => `Bench ${n}` },
+            'copy': { type: 'copies', feedback: n => `Own ${n}` },
+            'copies': { type: 'copies', feedback: n => `Own ${n}` },
+            'have': { type: 'copies', feedback: n => `Own ${n}` },
+            'own': { type: 'copies', feedback: n => `Own ${n}` },
+            'got': { type: 'copies', feedback: n => `Own ${n}` },
+            'holding': { type: 'copies', feedback: n => `Own ${n}` },
+            'refresh': { type: 'refreshes', feedback: n => `${n} refreshes` },
+            'refreshes': { type: 'refreshes', feedback: n => `${n} refreshes` },
+            'roll': { type: 'refreshes', feedback: n => `${n} refreshes` },
+            'rolls': { type: 'refreshes', feedback: n => `${n} refreshes` }
+        };
+        
+        for (let i = 0; i < tokens.length; i++) {
+            if (consumed[i]) continue;
+            const token = tokens[i];
+            
+            if (numberCommands[token]) {
+                const cmd = numberCommands[token];
+                let num = null;
+                let numIndex = -1;
+                
+                // Look for number AFTER keyword first (preferred)
+                for (let j = i + 1; j < Math.min(i + 3, tokens.length); j++) {
+                    if (consumed[j]) continue;
+                    const n = parseInt(tokens[j]);
+                    if (!isNaN(n)) {
+                        num = n;
+                        numIndex = j;
+                        break;
+                    }
+                }
+                
+                // Fall back to number BEFORE keyword
+                if (num === null && i > 0) {
+                    for (let j = i - 1; j >= Math.max(0, i - 2); j--) {
+                        if (consumed[j]) continue;
+                        const n = parseInt(tokens[j]);
+                        if (!isNaN(n)) {
+                            num = n;
+                            numIndex = j;
+                            break;
+                        }
+                    }
+                }
+                
+                if (num !== null) {
+                    // Validate if needed
+                    if (!cmd.validate || cmd.validate(num)) {
+                        commands.push({ type: cmd.type, value: num, feedback: cmd.feedback(num) });
+                        consumed[i] = true;
+                        consumed[numIndex] = true;
+                    }
+                }
+            }
+        }
+        
+        // === RARITY (standalone keywords) ===
         const rarities = {
-            'common': 'common', 'uncommon': 'uncommon', 'uc': 'uncommon', 'green': 'uncommon',
+            'common': 'common',
+            'uncommon': 'uncommon', 'uc': 'uncommon', 'green': 'uncommon',
             'rare': 'rare', 'blue': 'rare',
             'epic': 'epic', 'purple': 'epic',
             'ultra': 'ultra', 'legendary': 'ultra', 'red': 'ultra'
         };
-        for (const [key, val] of Object.entries(rarities)) {
-            if (new RegExp(`\\b${key}\\b`, 'i').test(original)) {
-                commands.push({ type: 'rarity', value: val, feedback: val });
+        
+        for (let i = 0; i < tokens.length; i++) {
+            if (consumed[i]) continue;
+            if (rarities[tokens[i]]) {
+                commands.push({ type: 'rarity', value: rarities[tokens[i]], feedback: rarities[tokens[i]] });
+                consumed[i] = true;
+                break; // Only one rarity
+            }
+        }
+        
+        // === EVOLUTION (N star) ===
+        for (let i = 0; i < tokens.length - 1; i++) {
+            if (consumed[i] || consumed[i+1]) continue;
+            const n = parseInt(tokens[i]);
+            if ((n === 2 || n === 3) && (tokens[i+1] === 'star' || tokens[i+1] === 'stars')) {
+                const evo = n === 2 ? 'twoStar' : 'threeStar';
+                commands.push({ type: 'evolution', value: evo, feedback: `${n}★` });
+                consumed[i] = consumed[i+1] = true;
+            }
+        }
+        
+        // === LEVEL UP/DOWN ===
+        if (/level\s*up/i.test(original)) {
+            commands.push({ type: 'level', value: 'up', feedback: 'Level up' });
+        }
+        if (/level\s*down/i.test(original)) {
+            commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
+        }
+        
+        // === CLEAR/RESET ===
+        for (let i = 0; i < tokens.length; i++) {
+            if (consumed[i]) continue;
+            if (tokens[i] === 'clear' || tokens[i] === 'reset') {
+                commands.push({ type: 'clear', feedback: 'Cleared' });
+                consumed[i] = true;
                 break;
             }
         }
         
-        // EVOLUTION
-        if (/(2)\s*(star|\*)/i.test(original)) {
-            commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
-        } else if (/(3)\s*(star|\*)/i.test(original)) {
-            commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
-        }
-        
-        // COPIES OWNED
-        if (/(own|have|got|holding|copies)/i.test(original) && !/(scout|bench|seen|taken)/i.test(original)) {
-            const ownNum = extractNumber(original, ['own', 'have', 'got', 'holding', 'copies'], availableNumbers);
-            if (ownNum !== null) {
-                commands.push({ type: 'copies', value: ownNum, feedback: `Own ${ownNum}` });
-                const idx = availableNumbers.indexOf(ownNum);
-                if (idx !== -1) availableNumbers.splice(idx, 1);
+        // === ORPHAN NUMBER = LEVEL (if nothing else matched) ===
+        if (commands.length === 0) {
+            for (let i = 0; i < tokens.length; i++) {
+                const n = parseInt(tokens[i]);
+                if (!isNaN(n) && n >= 1 && n <= 9) {
+                    commands.push({ type: 'level', value: n, feedback: `Level ${n}` });
+                    break;
+                }
             }
-        }
-        
-        // SCOUTING
-        if (/(scout|scouted|seen|taken|opponent)/i.test(original)) {
-            const scoutNum = extractNumber(original, ['scout', 'scouted', 'seen', 'taken', 'opponent'], availableNumbers);
-            if (scoutNum !== null) {
-                commands.push({ type: 'scouting', value: scoutNum, feedback: `Scout ${scoutNum}` });
-                const idx = availableNumbers.indexOf(scoutNum);
-                if (idx !== -1) availableNumbers.splice(idx, 1);
-            }
-        }
-        
-        // BENCH
-        if (/bench/i.test(original)) {
-            const benchNum = extractNumber(original, ['bench', 'benched'], availableNumbers);
-            if (benchNum !== null) {
-                commands.push({ type: 'bench', value: benchNum, feedback: `Bench ${benchNum}` });
-                const idx = availableNumbers.indexOf(benchNum);
-                if (idx !== -1) availableNumbers.splice(idx, 1);
-            }
-        }
-        
-        // DITTO - v4: Expanded patterns
-        if (/(add|enable|with)\s*ditto|ditto\s*(on|enabled?)/i.test(original)) {
-            commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
-        } else if (/(remove|disable|without)\s*ditto|ditto\s*(off|disabled?)/i.test(original)) {
-            commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
-        }
-        
-        // PVE ROUND - v4: New command
-        if (/(add|enable|with)\s*pve|pve\s*(on|enabled?|round)/i.test(original)) {
-            commands.push({ type: 'pve', value: true, feedback: 'PVE on' });
-        } else if (/(remove|disable|without)\s*pve|pve\s*(off|disabled?)/i.test(original)) {
-            commands.push({ type: 'pve', value: false, feedback: 'PVE off' });
-        }
-        
-        // REFRESHES
-        if (/(refresh|roll|check)/i.test(original)) {
-            const refreshNum = extractNumber(original, ['refresh', 'refreshes', 'roll', 'rolls', 'check', 'checks'], availableNumbers);
-            if (refreshNum !== null) {
-                commands.push({ type: 'refreshes', value: refreshNum, feedback: `${refreshNum} refreshes` });
-                const idx = availableNumbers.indexOf(refreshNum);
-                if (idx !== -1) availableNumbers.splice(idx, 1);
-            }
-        }
-        
-        // QUERY
-        if (/(what|tell|read).*(odd|probability)/i.test(original)) {
-            commands.push({ type: 'query', feedback: 'Reading odds' });
-        }
-        
-        // CLEAR
-        if (/(clear|reset)/i.test(original)) {
-            commands.push({ type: 'clear', feedback: 'Cleared' });
         }
         
         console.log(`✅ Commands: ${commands.map(c => c.feedback).join(', ') || 'none'}`);
@@ -607,7 +655,6 @@
     
     /**
      * Execute Command
-     * v4: Only touches the specific field for each command - preserves all other state
      */
     function executeCommand(cmd) {
         const state = window.calculatorState;
@@ -642,6 +689,9 @@
             case 'pve':
                 simCheckbox('pve', cmd.value);
                 break;
+            case 'wild':
+                simCheckbox('wild', cmd.value);
+                break;
             case 'refreshes':
                 simInput('refreshes', cmd.value);
                 break;
@@ -661,9 +711,6 @@
         }
     }
     
-    /**
-     * v4: More robust input targeting with React-compatible events
-     */
     function simInput(hint, value) {
         const inputs = document.querySelectorAll('input[type="number"]');
         let target = null;
@@ -693,14 +740,10 @@
         }
         
         if (target) {
-            // v4: Use native setter to work with React's controlled inputs
             const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
             nativeInputValueSetter.call(target, value);
-            
-            // Fire both events for React compatibility
             target.dispatchEvent(new Event('input', { bubbles: true }));
             target.dispatchEvent(new Event('change', { bubbles: true }));
-            
             console.log(`📝 Input[${hint}] → ${value}`);
         } else {
             console.warn(`⚠️ Input not found: ${hint}`);
@@ -749,5 +792,5 @@
         setTimeout(init, 500);
     }
     
-    console.log('✓ Voice Control v4 loaded');
+    console.log('✓ Voice Control v5 loaded');
 })();
