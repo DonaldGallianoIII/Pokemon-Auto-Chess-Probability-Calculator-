@@ -76,6 +76,11 @@
      */
     function renderProbabilityCurves(containerId) {
         const container = d3.select(`#${containerId}`);
+        if (container.empty()) {
+            console.warn(`Container #${containerId} not found`);
+            return;
+        }
+        
         container.html(''); // Clear loading state
         
         const state = window.calculatorState;
@@ -93,10 +98,12 @@
         const data = window.analyticsUtils.getProbabilityCurve(100);
         const levelData = window.analyticsUtils.getLevelComparison();
         
-        // Dimensions
+        // Dimensions - ensure minimum size
         const margin = { top: 20, right: 30, bottom: 50, left: 60 };
-        const width = container.node().clientWidth - margin.left - margin.right;
-        const height = container.node().clientHeight - margin.top - margin.bottom;
+        const containerWidth = container.node().clientWidth || 500;
+        const containerHeight = container.node().clientHeight || 350;
+        const width = Math.max(containerWidth - margin.left - margin.right, 200);
+        const height = Math.max(containerHeight - margin.top - margin.bottom, 150);
         
         // Create SVG
         const svg = container.append('svg')
@@ -337,6 +344,11 @@
      */
     function renderGoldROI(containerId) {
         const container = d3.select(`#${containerId}`);
+        if (container.empty()) {
+            console.warn(`Container #${containerId} not found`);
+            return;
+        }
+        
         container.html('');
         
         const state = window.calculatorState;
@@ -353,10 +365,12 @@
         // Get data
         const data = window.analyticsUtils.getGoldROI(200);
         
-        // Dimensions
+        // Dimensions - ensure minimum size
         const margin = { top: 20, right: 60, bottom: 50, left: 60 };
-        const width = container.node().clientWidth - margin.left - margin.right;
-        const height = container.node().clientHeight - margin.top - margin.bottom;
+        const containerWidth = container.node().clientWidth || 500;
+        const containerHeight = container.node().clientHeight || 350;
+        const width = Math.max(containerWidth - margin.left - margin.right, 200);
+        const height = Math.max(containerHeight - margin.top - margin.bottom, 150);
         
         // Create SVG
         const svg = container.append('svg')
@@ -572,6 +586,11 @@
      */
     function renderTornadoChart(containerId) {
         const container = d3.select(`#${containerId}`);
+        if (container.empty()) {
+            console.warn(`Container #${containerId} not found`);
+            return;
+        }
+        
         container.html('');
         
         const state = window.calculatorState;
@@ -598,10 +617,12 @@
             return;
         }
         
-        // Dimensions
+        // Dimensions - ensure minimum size
         const margin = { top: 20, right: 30, bottom: 30, left: 140 };
-        const width = container.node().clientWidth - margin.left - margin.right;
-        const height = Math.max(container.node().clientHeight - margin.top - margin.bottom, data.length * 50);
+        const containerWidth = container.node().clientWidth || 500;
+        const containerHeight = container.node().clientHeight || 350;
+        const width = Math.max(containerWidth - margin.left - margin.right, 200);
+        const height = Math.max(Math.max(containerHeight - margin.top - margin.bottom, 150), data.length * 50);
         
         // Create SVG
         const svg = container.append('svg')
@@ -708,16 +729,32 @@
      * Called when navigating to analytics page or when state changes
      */
     function renderAllCharts() {
-        if (!window.calculatorState) {
-            console.log('Waiting for calculator state...');
+        if (!window.calculatorState || !window.calculatorState.probabilities) {
+            console.log('⏳ Waiting for calculator state...');
+            // Retry after a short delay
+            setTimeout(renderAllCharts, 250);
             return;
         }
         
         console.log('📊 Rendering analytics charts...');
         
-        renderProbabilityCurves('chart-probability-curves');
-        renderGoldROI('chart-gold-roi');
-        renderTornadoChart('chart-tornado');
+        try {
+            renderProbabilityCurves('chart-probability-curves');
+        } catch (e) {
+            console.error('Error rendering probability curves:', e);
+        }
+        
+        try {
+            renderGoldROI('chart-gold-roi');
+        } catch (e) {
+            console.error('Error rendering gold ROI:', e);
+        }
+        
+        try {
+            renderTornadoChart('chart-tornado');
+        } catch (e) {
+            console.error('Error rendering tornado chart:', e);
+        }
     }
     
     // Expose render function globally
