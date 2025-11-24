@@ -470,95 +470,168 @@
     /**
      * Parse Command from Transcript - supports chaining
      */
-    function parseCommand(text) {
-        const commands = [];
-        
-        // Level commands
-        const levelMatch = text.match(/level (\d)/);
-        if (levelMatch) {
-            const level = parseInt(levelMatch[1]);
-            if (level >= 1 && level <= 9) {
-                commands.push({ type: 'level', value: level, feedback: `Level ${level}` });
-            }
-        } else if (text.includes('level up')) {
+    /**
+ * Parse Command from Transcript - Natural Language Understanding
+ * Handles conversational inputs like "I'm level 7 looking for rare"
+ */
+function parseCommand(text) {
+    const commands = [];
+    
+    // Normalize text - remove filler words but keep structure
+    const normalized = text
+        .replace(/\b(i'm|i am|im|my|the|a|an|is|are|at|for|looking for|want|need|got|have)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    
+    console.log(`📝 Normalized: "${normalized}"`);
+    
+    // Extract all numbers for context
+    const numbers = normalized.match(/\d+/g)?.map(n => parseInt(n)) || [];
+    
+    // LEVEL DETECTION
+    // Patterns: "level 7", "lvl 5", "7", "level up/down"
+    if (/level|lvl/.test(normalized)) {
+        if (/up/.test(normalized)) {
             commands.push({ type: 'level', value: 'up', feedback: 'Level up' });
-        } else if (text.includes('level down')) {
+        } else if (/down/.test(normalized)) {
             commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
-        }
-        
-        // Rarity commands
-        const rarities = ['common', 'uncommon', 'rare', 'epic', 'ultra'];
-        for (const rarity of rarities) {
-            if (text.includes(rarity)) {
-                commands.push({ type: 'rarity', value: rarity, feedback: rarity });
-                break;
-            }
-        }
-        
-        // Evolution commands
-        if (text.match(/two star|2 star|two\s*\*/)) {
-            commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
-        } else if (text.match(/three star|3 star|three\s*\*/)) {
-            commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
-        }
-        
-        // Copies owned
-        const copiesMatch = text.match(/(have|own|got)\s+(\d+)/);
-        if (copiesMatch) {
-            const copies = parseInt(copiesMatch[2]);
-            commands.push({ type: 'copies', value: copies, feedback: `Own ${copies}` });
-        }
-        
-        // Scouting
-        const scoutMatch = text.match(/(scout|scouted|taken)\s+(\d+)/);
-        if (scoutMatch) {
-            const copies = parseInt(scoutMatch[2]);
-            commands.push({ type: 'scouting', value: copies, feedback: `Scouted ${copies}` });
-        }
-        
-        // Bench
-        const benchMatch = text.match(/(bench|benched)\s+(\d+)/);
-        if (benchMatch) {
-            const units = parseInt(benchMatch[2]);
-            commands.push({ type: 'bench', value: units, feedback: `Bench ${units}` });
-        }
-        
-        // Ditto
-        if (text.match(/(add|enable|include)\s+ditto/)) {
-            commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
-        } else if (text.match(/(remove|disable|exclude)\s+ditto/)) {
-            commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
-        }
-        
-        // Refreshes
-        const refreshMatch = text.match(/(\d+)\s+refresh/);
-        if (refreshMatch) {
-            const refreshes = parseInt(refreshMatch[1]);
-            commands.push({ type: 'refreshes', value: refreshes, feedback: `${refreshes} refreshes` });
         } else {
-            const checkMatch = text.match(/check\s+(\d+)/);
-            if (checkMatch) {
-                const refreshes = parseInt(checkMatch[1]);
-                commands.push({ type: 'refreshes', value: refreshes, feedback: `${refreshes} refreshes` });
+            const levelNum = numbers.find(n => n >= 1 && n <= 9);
+            if (levelNum) {
+                commands.push({ type: 'level', value: levelNum, feedback: `Level ${levelNum}` });
+                numbers.splice(numbers.indexOf(levelNum), 1); // Remove used number
             }
         }
-        
-        // Query commands
-        if (text.match(/(what are|tell me|read)\s+(my\s+)?odds/)) {
-            commands.push({ type: 'query', feedback: 'Reading odds' });
-        }
-        
-        // Clear/Reset
-        if (text.includes('clear') || text.includes('reset')) {
-            commands.push({ type: 'clear', feedback: 'Cleared' });
-        }
-        
-        return commands;
+    } else if (numbers.length > 0 && numbers[0] >= 1 && numbers[0] <= 9 && !/(own|have|got|scout|bench|refresh)/.test(normalized)) {
+        // Standalone number 1-9 without other context likely means level
+        commands.push({ type: 'level', value: numbers[0], feedback: `Level ${numbers[0]}` });
+        numbers.shift();
     }
     
-    /**
-     * Execute Parsed Command
-     */
+    // RARITY DETECTION
+    // Patterns: "rare", "looking for epic", "targeting uncommon"
+    const rarityMap = {
+        'common': 'common',
+        'uncommon': 'uncommon',
+        'uc': 'uncommon',
+        'green': 'uncommon',
+        'rare': 'rare',
+        'blue': 'rare',
+        'epic': 'epic',
+        'purple': 'epic',
+        'ultra': 'ultra',
+        'legendary': 'ultra',
+        'red': 'ultra'
+    };
+    
+    for (const [keyword, rarity] of Object.entries(rarityMap)) {
+        if (normalized.includes(keyword)) {
+            commands.push({ type: 'rarity', value: rarity, feedback: rarity });
+            break;
+        }
+    }
+    
+    // EVOLUTION DETECTION
+    // Patterns: "two star", "2 star", "three star max"
+    if (/two|2/.test(normalized) && /star|\*/.test(normalized)) {
+        commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
+    } else if (/three|3/.test(normalized) && /star|\*/.test(normalized)) {
+        commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
+    }
+    
+    // COPIES OWNED
+    // Patterns: "have 3", "own 2", "got 5", "3 copies"
+    const ownedKeywords = /(own|have|got|copies)/;
+    if (ownedKeywords.test(normalized) && !/(scout|bench)/.test(normalized)) {
+        // Find number near ownership keywords
+        const ownMatch = normalized.match(/(own|have|got)\s*(\d+)|(\d+)\s*(own|have|got|copies)/);
+        if (ownMatch) {
+            const num = parseInt(ownMatch[2] || ownMatch[3]);
+            commands.push({ type: 'copies', value: num, feedback: `Own ${num}` });
+            const idx = numbers.indexOf(num);
+            if (idx !== -1) numbers.splice(idx, 1);
+        } else if (numbers.length > 0) {
+            // Fallback: first remaining number
+            commands.push({ type: 'copies', value: numbers[0], feedback: `Own ${numbers[0]}` });
+            numbers.shift();
+        }
+    }
+    
+    // SCOUTING
+    // Patterns: "scouted 4", "seen 3", "taken 2", "opponents have 5"
+    const scoutKeywords = /(scout|scouted|seen|taken|opponent|enemy)/;
+    if (scoutKeywords.test(normalized)) {
+        const scoutMatch = normalized.match(/(scout|scouted|seen|taken)\s*(\d+)|(\d+)\s*(scout|scouted|seen|taken)/);
+        if (scoutMatch) {
+            const num = parseInt(scoutMatch[2] || scoutMatch[3]);
+            commands.push({ type: 'scouting', value: num, feedback: `Scouted ${num}` });
+            const idx = numbers.indexOf(num);
+            if (idx !== -1) numbers.splice(idx, 1);
+        } else if (numbers.length > 0) {
+            commands.push({ type: 'scouting', value: numbers[0], feedback: `Scouted ${numbers[0]}` });
+            numbers.shift();
+        }
+    }
+    
+    // BENCH
+    // Patterns: "bench 5", "benched 3", "5 on bench"
+    const benchKeywords = /bench/;
+    if (benchKeywords.test(normalized)) {
+        const benchMatch = normalized.match(/bench\w*\s*(\d+)|(\d+)\s*bench/);
+        if (benchMatch) {
+            const num = parseInt(benchMatch[1] || benchMatch[2]);
+            commands.push({ type: 'bench', value: num, feedback: `Bench ${num}` });
+            const idx = numbers.indexOf(num);
+            if (idx !== -1) numbers.splice(idx, 1);
+        } else if (numbers.length > 0) {
+            commands.push({ type: 'bench', value: numbers[0], feedback: `Bench ${numbers[0]}` });
+            numbers.shift();
+        }
+    }
+    
+    // DITTO
+    // Patterns: "add ditto", "with ditto", "ditto on", "remove ditto", "no ditto"
+    if (/(add|enable|include|with|turn on|yes).*ditto|ditto.*(on|enabled)/.test(normalized)) {
+        commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
+    } else if (/(remove|disable|exclude|without|turn off|no).*ditto|ditto.*(off|disabled)/.test(normalized)) {
+        commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
+    }
+    
+    // REFRESHES
+    // Patterns: "10 refreshes", "check 15", "rolling 20 times"
+    const refreshKeywords = /refresh|roll|check/;
+    if (refreshKeywords.test(normalized)) {
+        const refreshMatch = normalized.match(/(\d+)\s*(refresh|roll|check|times)|refresh\s*(\d+)/);
+        if (refreshMatch) {
+            const num = parseInt(refreshMatch[1] || refreshMatch[3]);
+            commands.push({ type: 'refreshes', value: num, feedback: `${num} refreshes` });
+            const idx = numbers.indexOf(num);
+            if (idx !== -1) numbers.splice(idx, 1);
+        } else if (numbers.length > 0) {
+            // Last remaining number might be refreshes
+            const lastNum = numbers[numbers.length - 1];
+            if (lastNum > 9) { // Probably not a level
+                commands.push({ type: 'refreshes', value: lastNum, feedback: `${lastNum} refreshes` });
+                numbers.pop();
+            }
+        }
+    }
+    
+    // QUERY
+    // Patterns: "what are my odds", "tell me odds", "read results", "what's the probability"
+    if (/(what|tell|read|show).*(odd|probability|chance|percent)/.test(normalized)) {
+        commands.push({ type: 'query', feedback: 'Reading odds' });
+    }
+    
+    // CLEAR/RESET
+    // Patterns: "clear all", "reset", "start over"
+    if (/(clear|reset|start over)/.test(normalized)) {
+        commands.push({ type: 'clear', feedback: 'Cleared' });
+    }
+    
+    return commands;
+}
     function executeCommand(command) {
         const state = window.calculatorState;
         if (!state) return;
