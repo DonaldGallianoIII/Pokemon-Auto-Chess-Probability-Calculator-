@@ -2,11 +2,16 @@
  * PAC Analytics Voice Control System
  * Single unified voice interface - top right placement
  * 
- * v3 PATCHES:
+ * v4 PATCHES:
  * - Fixed premature command processing (accumulates until release)
  * - Converts spoken numbers ("seven") to digits ("7")
  * - Fixed regex capture bug: "level 5 scouted 2" no longer becomes "level 5 scouted 5"
  * - Lowered confidence threshold to 0.35
+ * - Added "ditto on/off" patterns
+ * - Added "to/too" → "2" conversion
+ * - Added PVE round command
+ * - Fixed spacebar scrolling page
+ * - State persistence: only updates fields you mention
  */
 
 (function() {
@@ -23,7 +28,7 @@
         language: 'en-US',
         continuous: false,
         interimResults: true,
-        confidenceThreshold: 0.35,  // Lowered from 0.6
+        confidenceThreshold: 0.35,
         pushToTalkKey: ' '
     };
     
@@ -41,19 +46,23 @@
     
     /**
      * Word to Number Conversion
+     * v4: Added "to" and "too" → "2"
      */
     const wordToNum = {
         'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
         'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
         'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
         'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
-        'eighteen': '18', 'nineteen': '19', 'twenty': '20'
+        'eighteen': '18', 'nineteen': '19', 'twenty': '20',
+        'to': '2', 'too': '2'  // v4: Common speech recognition outputs
     };
     
     function convertWordsToNumbers(text) {
         let result = text.toLowerCase();
-        for (const [word, digit] of Object.entries(wordToNum)) {
-            result = result.replace(new RegExp(`\\b${word}\\b`, 'g'), digit);
+        // Sort by length descending so "fourteen" matches before "four"
+        const sortedWords = Object.keys(wordToNum).sort((a, b) => b.length - a.length);
+        for (const word of sortedWords) {
+            result = result.replace(new RegExp(`\\b${word}\\b`, 'g'), wordToNum[word]);
         }
         return result;
     }
@@ -71,7 +80,7 @@
         createUI();
         setupEvents();
         
-        console.log('🎤 Voice Control v3 ready - Press SPACE to speak');
+        console.log('🎤 Voice Control v4 ready - Press SPACE to speak');
     }
     
     /**
@@ -232,8 +241,8 @@
         help.innerHTML = `
             <div style="color: #ef4444; font-weight: 700; margin-bottom: 0.5rem;">QUICK COMMANDS:</div>
             <div>• "level 7 rare have 3"</div>
-            <div>• "scouted 4"</div>
-            <div>• "bench 5"</div>
+            <div>• "scouted 4" / "bench 5"</div>
+            <div>• "ditto on" / "pve round"</div>
             <div style="margin-top: 0.5rem;">Hold SPACE or hold button</div>
         `;
         
@@ -248,6 +257,7 @@
     
     /**
      * Setup Events
+     * v4: Fixed spacebar scrolling with capture phase
      */
     function setupEvents() {
         button.addEventListener('mousedown', (e) => {
@@ -260,19 +270,28 @@
             if (isListening) stopListening();
         });
         
-        document.addEventListener('keydown', (e) => {
-            if (e.key === ' ' && !e.repeat && !isInputFocused()) {
+        // v4: Capture phase to prevent spacebar from scrolling
+        window.addEventListener('keydown', (e) => {
+            if (e.key === ' ' && !isInputFocused()) {
                 e.preventDefault();
-                startListening();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                if (!e.repeat && !isListening) {
+                    startListening();
+                }
             }
-        });
+        }, { capture: true });
         
-        document.addEventListener('keyup', (e) => {
-            if (e.key === ' ' && isListening) {
+        window.addEventListener('keyup', (e) => {
+            if (e.key === ' ') {
                 e.preventDefault();
-                stopListening();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                if (isListening) {
+                    stopListening();
+                }
             }
-        });
+        }, { capture: true });
     }
     
     function isInputFocused() {
@@ -429,7 +448,6 @@
     
     /**
      * Helper: Extract number after keyword (preferred) or before keyword (fallback)
-     * Returns the number and removes it from availableNumbers
      */
     function extractNumber(text, keywords, availableNumbers) {
         const keywordPattern = keywords.join('|');
@@ -457,7 +475,7 @@
     
     /**
      * Parse Command - Natural Language
-     * v3: Fixed regex to prefer "keyword NUMBER" over "NUMBER keyword"
+     * v4: Added ditto on/off patterns, PVE round command
      */
     function parseCommand(text) {
         const commands = [];
@@ -484,7 +502,7 @@
             }
         } else if (availableNumbers.length === 1 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
             // Single number with no context = assume level
-            if (!/(own|have|got|scout|bench|refresh|star|copies)/i.test(original)) {
+            if (!/(own|have|got|scout|bench|refresh|star|copies|ditto|pve)/i.test(original)) {
                 commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
                 availableNumbers = [];
             }
@@ -492,7 +510,7 @@
             // First number might be level if nothing precedes it
             const firstNumIndex = original.indexOf(availableNumbers[0].toString());
             const beforeNum = original.substring(0, firstNumIndex);
-            if (!/(own|have|got|scout|bench|refresh)/i.test(beforeNum)) {
+            if (!/(own|have|got|scout|bench|refresh|ditto|pve)/i.test(beforeNum)) {
                 commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
                 availableNumbers.shift();
             }
@@ -519,7 +537,7 @@
             commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
         }
         
-        // COPIES OWNED - v3 fixed
+        // COPIES OWNED
         if (/(own|have|got|holding|copies)/i.test(original) && !/(scout|bench|seen|taken)/i.test(original)) {
             const ownNum = extractNumber(original, ['own', 'have', 'got', 'holding', 'copies'], availableNumbers);
             if (ownNum !== null) {
@@ -529,7 +547,7 @@
             }
         }
         
-        // SCOUTING - v3 fixed
+        // SCOUTING
         if (/(scout|scouted|seen|taken|opponent)/i.test(original)) {
             const scoutNum = extractNumber(original, ['scout', 'scouted', 'seen', 'taken', 'opponent'], availableNumbers);
             if (scoutNum !== null) {
@@ -539,7 +557,7 @@
             }
         }
         
-        // BENCH - v3 fixed
+        // BENCH
         if (/bench/i.test(original)) {
             const benchNum = extractNumber(original, ['bench', 'benched'], availableNumbers);
             if (benchNum !== null) {
@@ -549,14 +567,21 @@
             }
         }
         
-        // DITTO
-        if (/(add|enable|with)\s*ditto/i.test(original)) {
+        // DITTO - v4: Expanded patterns
+        if (/(add|enable|with)\s*ditto|ditto\s*(on|enabled?)/i.test(original)) {
             commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
-        } else if (/(remove|disable|without)\s*ditto/i.test(original)) {
+        } else if (/(remove|disable|without)\s*ditto|ditto\s*(off|disabled?)/i.test(original)) {
             commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
         }
         
-        // REFRESHES - v3 fixed
+        // PVE ROUND - v4: New command
+        if (/(add|enable|with)\s*pve|pve\s*(on|enabled?|round)/i.test(original)) {
+            commands.push({ type: 'pve', value: true, feedback: 'PVE on' });
+        } else if (/(remove|disable|without)\s*pve|pve\s*(off|disabled?)/i.test(original)) {
+            commands.push({ type: 'pve', value: false, feedback: 'PVE off' });
+        }
+        
+        // REFRESHES
         if (/(refresh|roll|check)/i.test(original)) {
             const refreshNum = extractNumber(original, ['refresh', 'refreshes', 'roll', 'rolls', 'check', 'checks'], availableNumbers);
             if (refreshNum !== null) {
@@ -582,10 +607,13 @@
     
     /**
      * Execute Command
+     * v4: Only touches the specific field for each command - preserves all other state
      */
     function executeCommand(cmd) {
         const state = window.calculatorState;
         if (!state) return;
+        
+        console.log(`⚡ Executing: ${cmd.type} = ${cmd.value}`);
         
         switch (cmd.type) {
             case 'level':
@@ -611,6 +639,9 @@
             case 'ditto':
                 simCheckbox('ditto', cmd.value);
                 break;
+            case 'pve':
+                simCheckbox('pve', cmd.value);
+                break;
             case 'refreshes':
                 simInput('refreshes', cmd.value);
                 break;
@@ -626,34 +657,74 @@
         if (sel) {
             sel.value = value;
             sel.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log(`📋 Select[${index}] → ${value}`);
         }
     }
     
+    /**
+     * v4: More robust input targeting with React-compatible events
+     */
     function simInput(hint, value) {
         const inputs = document.querySelectorAll('input[type="number"]');
         let target = null;
         
         if (hint === 'copies owned') {
-            target = Array.from(inputs).find(i => i.closest('div')?.querySelector('label')?.textContent.includes('Copies You Have'));
+            target = Array.from(inputs).find(i => {
+                const label = i.closest('div')?.querySelector('label')?.textContent || '';
+                return /copies|have|own/i.test(label);
+            });
         } else if (hint === 'scouting') {
-            target = Array.from(inputs).find(i => i.closest('.bg-gradient-to-br')?.querySelector('h2')?.textContent.includes('Scouting'));
+            target = Array.from(inputs).find(i => {
+                const section = i.closest('.bg-gradient-to-br')?.querySelector('h2')?.textContent || '';
+                const label = i.closest('div')?.querySelector('label')?.textContent || '';
+                return /scout/i.test(section) || /scout|seen|taken/i.test(label);
+            });
         } else if (hint === 'bench') {
-            target = Array.from(inputs).find(i => i.closest('.bg-gradient-to-br')?.querySelector('h2')?.textContent.includes('Bench'));
+            target = Array.from(inputs).find(i => {
+                const section = i.closest('.bg-gradient-to-br')?.querySelector('h2')?.textContent || '';
+                const label = i.closest('div')?.querySelector('label')?.textContent || '';
+                return /bench/i.test(section) || /bench/i.test(label);
+            });
         } else if (hint === 'refreshes') {
-            target = Array.from(inputs).find(i => i.closest('div')?.querySelector('label')?.textContent.includes('Refreshes'));
+            target = Array.from(inputs).find(i => {
+                const label = i.closest('div')?.querySelector('label')?.textContent || '';
+                return /refresh|roll/i.test(label);
+            });
         }
         
         if (target) {
-            target.value = value;
+            // v4: Use native setter to work with React's controlled inputs
+            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeInputValueSetter.call(target, value);
+            
+            // Fire both events for React compatibility
             target.dispatchEvent(new Event('input', { bubbles: true }));
             target.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            console.log(`📝 Input[${hint}] → ${value}`);
+        } else {
+            console.warn(`⚠️ Input not found: ${hint}`);
         }
     }
     
     function simCheckbox(hint, checked) {
         const cbs = document.querySelectorAll('input[type="checkbox"]');
-        const target = Array.from(cbs).find(cb => cb.parentElement?.textContent.toLowerCase().includes(hint));
-        if (target && target.checked !== checked) target.click();
+        const target = Array.from(cbs).find(cb => {
+            const text = cb.closest('label')?.textContent?.toLowerCase() || 
+                        cb.parentElement?.textContent?.toLowerCase() || '';
+            return text.includes(hint);
+        });
+        
+        if (target) {
+            if (target.checked !== checked) {
+                target.click();
+                console.log(`☑️ Checkbox[${hint}] → ${checked}`);
+            } else {
+                console.log(`☑️ Checkbox[${hint}] already ${checked}`);
+            }
+        } else {
+            console.warn(`⚠️ Checkbox not found: ${hint}`);
+        }
     }
     
     // Expose API
@@ -678,5 +749,5 @@
         setTimeout(init, 500);
     }
     
-    console.log('✓ Voice Control v3 loaded');
+    console.log('✓ Voice Control v4 loaded');
 })();
