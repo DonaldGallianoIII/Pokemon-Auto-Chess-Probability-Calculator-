@@ -470,9 +470,10 @@
             dropdownOpen = false;
             document.getElementById('navDropdown').classList.remove('open');
             
-            // Trigger analytics render if navigating to analytics
+            // Trigger analytics render if navigating to analytics (after transition completes)
             if (page === 'analytics' && window.renderAnalytics) {
-                setTimeout(() => window.renderAnalytics(), 100);
+                // Wait for CSS transition (500ms) plus a bit extra
+                setTimeout(() => window.renderAnalytics(), 600);
             }
         }
         
@@ -1737,8 +1738,8 @@
             // List of optional feature files to load
             // Add new features here without modifying anything else
             const features = [
-                { src: 'analytics.js', type: 'text/babel', required: false }
-                // Add more features: { src: 'feature-name.js', type: 'text/babel', required: false }
+                { src: 'analytics.js', type: 'text/javascript', required: false }
+                // Add more features: { src: 'feature-name.js', type: 'text/javascript', required: false }
             ];
             
             // Load features after a short delay to ensure calculator is ready
