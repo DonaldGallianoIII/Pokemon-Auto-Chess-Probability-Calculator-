@@ -128,6 +128,8 @@
             const [targetIsWild, setTargetIsWild] = useState(false);
             const [pveRoundEnabled, setPveRoundEnabled] = useState(false);
             const [wildUnitsOwned, setWildUnitsOwned] = useState(0);
+            const [wildUnitsTaken, setWildUnitsTaken] = useState(0); // Wild units on opponent boards (same rarity/evo)
+            const [wildUnitsBenched, setWildUnitsBenched] = useState(0); // Wild units on your bench (same rarity/evo)
             const [wildAddPicks, setWildAddPicks] = useState({
                 uncommon: 0,
                 rare: 0,
@@ -163,6 +165,8 @@
                 setTargetIsWild(false);
                 setPveRoundEnabled(false);
                 setWildUnitsOwned(0);
+                setWildUnitsTaken(0);
+                setWildUnitsBenched(0);
                 setWildAddPicks({ uncommon: 0, rare: 0, epic: 0 });
                 setWildRegionals({
                     common: { twoStar: 0, threeStar: 0 },
@@ -274,6 +278,13 @@
                     wildCountsForRarity.twoStar > 0 : 
                     wildCountsForRarity.threeStar > 0;
                 
+                // Calculate Wild pool size (for Path A denominator)
+                const totalWildCopiesBeforeReduction = targetEvo === 'twoStar' ?
+                    wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
+                    wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
+                
+                const totalWildCopies = Math.max(0, totalWildCopiesBeforeReduction - wildUnitsTaken - wildUnitsBenched);
+                
                 // Wild boost calculation
                 const wildBoost = (pveRoundEnabled && targetIsWild) ? 
                     (0.05 + (wildUnitsOwned * 0.01)) : 0;
@@ -289,15 +300,10 @@
                 } else if (targetCopies > 0 && totalPoolSize > 0) {
                     const baseProb = rarityChance * (targetCopies / totalPoolSize);
                     
-                    if (targetIsWild && pveRoundEnabled && wildUnitsExist) {
+                    if (targetIsWild && pveRoundEnabled && wildUnitsExist && totalWildCopies > 0) {
                         // Wild target: two paths
                         // Path A: Wild boost triggers → correct rarity → specific Wild
-                        const totalWildCopies = targetEvo === 'twoStar' ?
-                            wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
-                            wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
-                        
-                        const pathA = totalWildCopies > 0 ? 
-                            wildBoost * rarityChance * (targetCopies / totalWildCopies) : 0;
+                        const pathA = wildBoost * rarityChance * (targetCopies / totalWildCopies);
                         
                         // Path B: Wild boost misses → normal shop
                         const pathB = (1 - wildBoost) * baseProb;
@@ -348,13 +354,8 @@
                     if (!wildTargetImpossible && targetCopies > 0 && totalPoolSize > 0) {
                         const nextBaseProb = nextRarityChance * (targetCopies / totalPoolSize);
                         
-                        if (targetIsWild && pveRoundEnabled && wildUnitsExist) {
-                            const totalWildCopies = targetEvo === 'twoStar' ?
-                                wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
-                                wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
-                            
-                            const pathA = totalWildCopies > 0 ? 
-                                wildBoost * nextRarityChance * (targetCopies / totalWildCopies) : 0;
+                        if (targetIsWild && pveRoundEnabled && wildUnitsExist && totalWildCopies > 0) {
+                            const pathA = wildBoost * nextRarityChance * (targetCopies / totalWildCopies);
                             const pathB = (1 - wildBoost) * nextBaseProb;
                             nextPerSlotProb = pathA + pathB;
                         } else if (targetIsWild && !pveRoundEnabled && wildUnitsExist) {
@@ -406,7 +407,8 @@
                     wildUnitsExist
                 };
             }, [level, targetRarity, targetEvo, refreshes, calculateTotalPool, copiesTaken, benchUnits, 
-                evolutionGoal, copiesOwned, dittoEnabled, targetIsWild, pveRoundEnabled, wildUnitsOwned, totalWildCounts]);
+                evolutionGoal, copiesOwned, dittoEnabled, targetIsWild, pveRoundEnabled, wildUnitsOwned, 
+                wildUnitsTaken, wildUnitsBenched, totalWildCounts]);
 
             const updatePortalRegional = (rarity, evo, value) => {
                 setPortalRegionals(prev => ({
@@ -583,7 +585,8 @@
                                             <h2 className="text-xl font-bold">Scouting</h2>
                                         </div>
                                         <p className="text-sm text-gray-400 mb-4">
-                                            Copies on opponent boards
+                                            Your specific target on opponent boards
+                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild scouting in Wild Mechanics below)</span>}
                                         </p>
                                         <div>
                                             <input 
@@ -620,7 +623,8 @@
                                             <h2 className="text-xl font-bold">Your Bench</h2>
                                         </div>
                                         <p className="text-sm text-gray-400 mb-4">
-                                            Same rarity/evo as target
+                                            Same rarity/evo as target (all units)
+                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild bench tracking in Wild Mechanics below)</span>}
                                         </p>
                                         <div>
                                             <input 
@@ -639,11 +643,17 @@
 
                                 {/* Add Picks (formerly Regional Additions) */}
                                 <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border border-slate-700/50 shadow-2xl">
-                                    <div className="flex items-center gap-3 mb-6">
+                                    <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-xl">
                                             🌍
                                         </div>
                                         <h2 className="text-2xl font-bold">Add Picks</h2>
+                                    </div>
+                                    <div className="mb-6 p-3 bg-amber-900/30 border border-amber-500/50 rounded-xl">
+                                        <div className="text-amber-400 font-semibold text-sm flex items-center gap-2">
+                                            <span>⚠️</span>
+                                            <span>DO NOT PUT WILD UNITS HERE - Use Wild Mechanics section below</span>
+                                        </div>
                                     </div>
                                     
                                     {/* Round 5 */}
@@ -724,11 +734,17 @@
 
                                 {/* Portal Regionals */}
                                 <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border border-slate-700/50 shadow-2xl">
-                                    <div className="flex items-center gap-3 mb-6">
+                                    <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xl">
                                             🌀
                                         </div>
                                         <h2 className="text-2xl font-bold">Portal-Specific Regionals</h2>
+                                    </div>
+                                    <div className="mb-6 p-3 bg-amber-900/30 border border-amber-500/50 rounded-xl">
+                                        <div className="text-amber-400 font-semibold text-sm flex items-center gap-2">
+                                            <span>⚠️</span>
+                                            <span>DO NOT PUT WILD UNITS HERE - Use Wild Mechanics section below</span>
+                                        </div>
                                     </div>
                                     <div className="space-y-3">
                                         {Object.keys(portalRegionals).map(rarity => (
@@ -825,6 +841,47 @@
                                                     )}
                                                 </div>
                                             </div>
+
+                                            {/* Wild-Specific Scouting (only shown when Target is Wild) */}
+                                            {targetIsWild && (
+                                                <div className="border-t border-amber-700/30 pt-6">
+                                                    <h3 className="font-bold text-lg mb-4 text-amber-300 flex items-center gap-2">
+                                                        <span>🔍</span>
+                                                        <span>Wild Scouting</span>
+                                                    </h3>
+                                                    <p className="text-sm text-gray-400 mb-4">
+                                                        Track Wild units separately (same rarity/evo as your target)
+                                                    </p>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Units Taken (Opponents)</label>
+                                                            <input 
+                                                                type="number"
+                                                                value={wildUnitsTaken}
+                                                                onChange={(e) => setWildUnitsTaken(Math.max(0, parseInt(e.target.value) || 0))}
+                                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                                                                min="0"
+                                                            />
+                                                            <div className="text-xs text-gray-400 mt-2">
+                                                                Reduces Wild pool for Path A
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Units Benched (Yours)</label>
+                                                            <input 
+                                                                type="number"
+                                                                value={wildUnitsBenched}
+                                                                onChange={(e) => setWildUnitsBenched(Math.max(0, parseInt(e.target.value) || 0))}
+                                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                                                                min="0"
+                                                            />
+                                                            <div className="text-xs text-gray-400 mt-2">
+                                                                Reduces Wild pool for Path A
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Base Wild Counts */}
                                             <div className="border-t border-amber-700/30 pt-6">
@@ -954,7 +1011,7 @@
                                         <div className="bg-black/30 backdrop-blur-sm rounded-2xl p-4 border border-cyan-500/20">
                                             <div className="text-sm text-gray-400 mb-1">Per Slot (Target Only)</div>
                                             <div className={`text-3xl font-bold ${probabilities.targetCopies === 0 ? 'text-red-400' : probabilities.wildTargetImpossible ? 'text-red-400' : 'text-cyan-400'}`}>
-                                                {probabilities.perSlot.toFixed(3)}%
+                                                {probabilities.perSlot === 0 ? '0.000' : probabilities.perSlot < 0.001 ? '<0.001' : probabilities.perSlot.toFixed(3)}%
                                             </div>
                                             {probabilities.wildTargetImpossible && (
                                                 <div className="text-xs text-red-400 mt-2 font-semibold flex items-center gap-1">
@@ -983,13 +1040,13 @@
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-xs text-gray-400">Without Ditto:</span>
                                                     <span className="text-xl font-bold text-blue-400">
-                                                        {probabilities.perRefresh.toFixed(2)}%
+                                                        {probabilities.perRefresh === 0 ? '0.00' : probabilities.perRefresh < 0.01 ? '<0.01' : probabilities.perRefresh.toFixed(2)}%
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
                                                     <span className="text-xs text-gray-400">With Ditto:</span>
                                                     <span className={`text-xl font-bold ${dittoEnabled ? 'text-green-400' : 'text-gray-600'}`}>
-                                                        {probabilities.perRefreshWithDitto.toFixed(2)}%
+                                                        {probabilities.perRefreshWithDitto === 0 ? '0.00' : probabilities.perRefreshWithDitto < 0.01 ? '<0.01' : probabilities.perRefreshWithDitto.toFixed(2)}%
                                                     </span>
                                                 </div>
                                             </div>
@@ -1000,7 +1057,7 @@
                                                 Over {refreshes} Refreshes
                                             </div>
                                             <div className="text-4xl font-bold text-green-400">
-                                                {probabilities.overNRefreshes.toFixed(2)}%
+                                                {probabilities.overNRefreshes === 0 ? '0.00' : probabilities.overNRefreshes < 0.01 ? '<0.01' : probabilities.overNRefreshes.toFixed(2)}%
                                             </div>
                                             {dittoEnabled && (
                                                 <div className="text-xs text-green-400 mt-1 font-semibold">✓ Ditto included</div>
@@ -1088,7 +1145,7 @@
                                             <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
                                                 <span className="text-gray-400">Per refresh:</span>
                                                 <span className="font-bold text-lg text-blue-400">
-                                                    {probabilities.levelUpPreview.perRefresh.toFixed(2)}%
+                                                    {probabilities.levelUpPreview.perRefresh === 0 ? '0.00' : probabilities.levelUpPreview.perRefresh < 0.01 ? '<0.01' : probabilities.levelUpPreview.perRefresh.toFixed(2)}%
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
