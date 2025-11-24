@@ -94,8 +94,8 @@
             return;
         }
         
-        // Get data
-        const data = window.analyticsUtils.getProbabilityCurve(100);
+        // Get data - 50 refreshes for better detail
+        const data = window.analyticsUtils.getProbabilityCurve(50);
         const levelData = window.analyticsUtils.getLevelComparison();
         
         // Dimensions - ensure minimum size
@@ -112,9 +112,9 @@
             .append('g')
             .attr('transform', `translate(${margin.left},${margin.top})`);
         
-        // Scales
+        // Scales - 0 to 50 refreshes
         const xScale = d3.scaleLinear()
-            .domain([0, 100])
+            .domain([0, 50])
             .range([0, width]);
         
         const yScale = d3.scaleLinear()
@@ -225,7 +225,7 @@
         if (state.level < 9) {
             const nextLevelProb = levelData[state.level]?.perRefresh / 100 || 0;
             const nextLevelData = [];
-            for (let r = 1; r <= 100; r++) {
+            for (let r = 1; r <= 50; r++) {
                 nextLevelData.push({
                     refreshes: r,
                     probability: (1 - Math.pow(1 - nextLevelProb, r)) * 100
@@ -245,7 +245,7 @@
         svg.append('g')
             .attr('class', 'axis')
             .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(xScale).ticks(10))
+            .call(d3.axisBottom(xScale).ticks(10).tickValues([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50]))
             .append('text')
             .attr('x', width / 2)
             .attr('y', 40)
@@ -362,8 +362,8 @@
             return;
         }
         
-        // Get data
-        const data = window.analyticsUtils.getGoldROI(200);
+        // Get data - 100 gold for better detail
+        const data = window.analyticsUtils.getGoldROI(100);
         
         // Dimensions - ensure minimum size
         const margin = { top: 20, right: 60, bottom: 50, left: 60 };
@@ -379,9 +379,9 @@
             .append('g')
             .attr('transform', `translate(${margin.left},${margin.top})`);
         
-        // Scales
+        // Scales - 0 to 100 gold
         const xScale = d3.scaleLinear()
-            .domain([0, 200])
+            .domain([0, 100])
             .range([0, width]);
         
         const yScaleProb = d3.scaleLinear()
@@ -512,7 +512,7 @@
         svg.append('g')
             .attr('class', 'axis')
             .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(xScale).ticks(10).tickFormat(d => d + 'g'))
+            .call(d3.axisBottom(xScale).tickValues([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]).tickFormat(d => d + 'g'))
             .append('text')
             .attr('x', width / 2)
             .attr('y', 40)
@@ -618,13 +618,14 @@
         }
         
         // Dimensions - ensure minimum size
-        const margin = { top: 20, right: 30, bottom: 30, left: 140 };
+        const margin = { top: 20, right: 50, bottom: 30, left: 150 };
         const containerWidth = container.node().clientWidth || 500;
         const containerHeight = container.node().clientHeight || 350;
-        const width = Math.max(containerWidth - margin.left - margin.right, 200);
-        const height = Math.max(Math.max(containerHeight - margin.top - margin.bottom, 150), data.length * 50);
+        const width = Math.max(containerWidth - margin.left - margin.right, 150);
+        const barHeight = 45;
+        const height = Math.max(data.length * barHeight, 150);
         
-        // Create SVG
+        // Create SVG with calculated height
         const svg = container.append('svg')
             .attr('width', width + margin.left + margin.right)
             .attr('height', height + margin.top + margin.bottom)
@@ -632,7 +633,7 @@
             .attr('transform', `translate(${margin.left},${margin.top})`);
         
         // Scales
-        const maxImpact = Math.max(d3.max(data, d => Math.abs(d.impact)), 5);
+        const maxImpact = Math.max(d3.max(data, d => Math.abs(d.impact)), 3);
         
         const xScale = d3.scaleLinear()
             .domain([-maxImpact, maxImpact])
@@ -709,7 +710,7 @@
         svg.append('g')
             .attr('class', 'axis')
             .attr('transform', `translate(0,${height})`)
-            .call(d3.axisBottom(xScale).ticks(5).tickFormat(d => (d >= 0 ? '+' : '') + d + '%'));
+            .call(d3.axisBottom(xScale).ticks(7).tickFormat(d => (d >= 0 ? '+' : '') + d.toFixed(1) + '%'));
         
         // Legend
         const legend = container.append('div')
