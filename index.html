@@ -418,39 +418,7 @@
             </div>
         </div>
     </nav>
-    
-    <!-- Voice Activation Panel - LEFT SIDE -->
-    <div class="voice-panel-container">
-        <div class="voice-panel">
-            <button class="voice-activation-btn" id="voiceActivationBtn">
-                🎤 VOICE ACTIVATION
-            </button>
-            <div class="voice-timer" id="voiceTimer">0:00</div>
-            <div class="voice-status" id="voiceStatus">Ready</div>
-            
-            <div class="voice-explanation">
-                <h3>How It Works</h3>
-                <p>
-                    Click the button or press <span class="voice-shortcut">SPACE</span> and speak commands while held.
-                </p>
-                
-                <p style="margin-top: 0.75rem; font-weight: 600; color: #fca5a5;">
-                    Why Voice Control?
-                </p>
-                <ul>
-                    <li>Time-constrained rounds</li>
-                    <li>Keep eyes on board</li>
-                    <li>Hands stay on mouse</li>
-                    <li>Update odds instantly</li>
-                </ul>
-                
-                <p style="margin-top: 0.75rem; font-size: 0.7rem; color: #475569;">
-                    Say: "level 7 rare have 3"<br>
-                    Chain multiple commands in one breath!
-                </p>
-            </div>
-        </div>
-    </div>
+   
     
     <!-- Page Container -->
     <div class="page-container" id="pageContainer" data-active-page="calculator">
@@ -561,110 +529,9 @@
             }
         });
         
-        // Voice Activation Panel Logic
-        (function() {
-            const btn = document.getElementById('voiceActivationBtn');
-            const timer = document.getElementById('voiceTimer');
-            const status = document.getElementById('voiceStatus');
+     
             
-            let isActive = false;
-            let startTime = 0;
-            let timerInterval = null;
-            
-            function updateTimer() {
-                const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                const mins = Math.floor(elapsed / 60);
-                const secs = elapsed % 60;
-                timer.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-            }
-            
-            function startVoice() {
-                if (isActive) return;
-                
-                isActive = true;
-                startTime = Date.now();
-                
-                btn.classList.add('listening', 'active');
-                timer.classList.add('active');
-                status.classList.add('active');
-                status.textContent = '🔴 Listening...';
-                
-                timerInterval = setInterval(updateTimer, 100);
-                
-                // Trigger voice control (if available)
-                if (window.voiceControl && window.voiceControl.startListening) {
-                    window.voiceControl.startListening();
-                }
-            }
-            
-            function stopVoice() {
-                if (!isActive) return;
-                
-                isActive = false;
-                
-                btn.classList.remove('listening', 'active');
-                timer.classList.remove('active');
-                status.classList.remove('active');
-                status.textContent = 'Ready';
-                
-                clearInterval(timerInterval);
-                timer.textContent = '0:00';
-                
-                // Stop voice control (if available)
-                if (window.voiceControl && window.voiceControl.stopListening) {
-                    window.voiceControl.stopListening();
-                }
-            }
-            
-            // Button events
-            btn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                startVoice();
-            });
-            
-            btn.addEventListener('mouseup', () => {
-                stopVoice();
-            });
-            
-            btn.addEventListener('mouseleave', () => {
-                if (isActive) stopVoice();
-            });
-            
-            // Spacebar events
-            let spaceHeld = false;
-            document.addEventListener('keydown', (e) => {
-                if (e.key === ' ' && !e.repeat && !isInputFocused()) {
-                    e.preventDefault();
-                    spaceHeld = true;
-                    startVoice();
-                }
-            });
-            
-            document.addEventListener('keyup', (e) => {
-                if (e.key === ' ' && spaceHeld) {
-                    e.preventDefault();
-                    spaceHeld = false;
-                    stopVoice();
-                }
-            });
-            
-            function isInputFocused() {
-                const active = document.activeElement;
-                return active && (
-                    active.tagName === 'INPUT' ||
-                    active.tagName === 'TEXTAREA' ||
-                    active.tagName === 'SELECT' ||
-                    active.isContentEditable
-                );
-            }
-            
-            // Expose API for voice control module
-            window.voicePanel = {
-                start: startVoice,
-                stop: stopVoice,
-                isActive: () => isActive
-            };
-        })();
+        
     </script>
     
     <script type="text/babel">
