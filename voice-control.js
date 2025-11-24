@@ -3,17 +3,6 @@
  * Enables hands-free calculator operation during gameplay
  * 
  * Usage: Press and hold spacebar (or click mic button) to speak commands
- * 
- * Supported commands:
- * - Level: "level 5", "level up", "level down"
- * - Rarity: "uncommon", "rare", "epic", "ultra"
- * - Evolution: "two star", "three star", "two star max", "three star max"
- * - Copies: "have 3", "own 2", "got 5"
- * - Scouting: "scouted 4", "taken 3", "scout 2"
- * - Bench: "bench 5", "benched 3"
- * - Ditto: "add ditto", "enable ditto", "remove ditto", "disable ditto"
- * - Refreshes: "10 refreshes", "check 15"
- * - Query: "what are my odds", "tell me my odds", "read results"
  */
 
 (function() {
@@ -33,7 +22,7 @@
         interimResults: true,
         maxAlternatives: 1,
         pushToTalkKey: ' ', // Spacebar
-        audioFeedback: false, // Toggle for TTS readback
+        audioFeedback: false,
         confidenceThreshold: 0.6
     };
     
@@ -42,12 +31,15 @@
     let isListening = false;
     let isPushToTalkActive = false;
     let commandHistory = [];
+    let startTime = 0;
+    let timerInterval = null;
     
     // UI Elements
+    let container = null;
     let voiceButton = null;
-    let statusIndicator = null;
+    let timerDisplay = null;
+    let statusDisplay = null;
     let transcriptDisplay = null;
-    let feedbackContainer = null;
     
     /**
      * Initialize voice control system
@@ -65,7 +57,7 @@
         
         console.log('🎤 Voice Control initialized');
         console.log('   → Press and hold SPACEBAR to speak');
-        console.log('   → Or click the microphone button');
+        console.log('   → Or click/hold the microphone button');
     }
     
     /**
@@ -85,154 +77,205 @@
     }
     
     /**
-     * Create Voice Control UI
+     * Create Voice Control UI - TOP RIGHT
      */
     function createUI() {
-        // Container
-        const container = document.createElement('div');
+        // Main container - TOP RIGHT
+        container = document.createElement('div');
         container.id = 'voice-control-container';
         container.style.cssText = `
             position: fixed;
-            bottom: 2rem;
+            top: 80px;
             right: 2rem;
-            z-index: 2000;
+            z-index: 999;
             display: flex;
             flex-direction: column;
             align-items: flex-end;
-            gap: 1rem;
+            gap: 0.75rem;
+            width: 280px;
         `;
         
-        // Feedback container (transcript + history)
-        feedbackContainer = document.createElement('div');
-        feedbackContainer.style.cssText = `
+        // Voice button with timer/status overlay
+        const buttonCard = document.createElement('div');
+        buttonCard.style.cssText = `
             background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            border-radius: 1rem;
-            padding: 1rem;
-            min-width: 300px;
-            max-width: 400px;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
             backdrop-filter: blur(10px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            opacity: 0;
-            transform: translateY(10px);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            pointer-events: none;
+            width: 100%;
         `;
         
-        // Status indicator
-        statusIndicator = document.createElement('div');
-        statusIndicator.style.cssText = `
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+        // Button
+        voiceButton = document.createElement('button');
+        voiceButton.innerHTML = '🎤 VOICE ACTIVATION';
+        voiceButton.style.cssText = `
+            width: 100%;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border: 3px solid #991b1b;
+            border-radius: 1rem;
+            color: white;
+            font-weight: 800;
+            font-size: 1.125rem;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.15s;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4),
+                        inset 0 2px 4px rgba(255, 255, 255, 0.2);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        `;
+        
+        // Timer
+        timerDisplay = document.createElement('div');
+        timerDisplay.textContent = '0:00';
+        timerDisplay.style.cssText = `
+            text-align: center;
+            margin-top: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #38bdf8;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.1em;
+            text-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+        `;
+        
+        // Status
+        statusDisplay = document.createElement('div');
+        statusDisplay.textContent = 'Ready';
+        statusDisplay.style.cssText = `
+            text-align: center;
+            margin-top: 0.5rem;
             font-size: 0.875rem;
-            color: #94a3b8;
-        `;
-        statusIndicator.innerHTML = `
-            <div class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #64748b;"></div>
-            <span>Ready</span>
+            color: #64748b;
+            font-weight: 600;
         `;
         
-        // Transcript display
+        // Transcript (collapsible)
         transcriptDisplay = document.createElement('div');
         transcriptDisplay.style.cssText = `
-            font-size: 1rem;
-            color: white;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            color: #94a3b8;
             min-height: 2rem;
-            font-weight: 500;
-        `;
-        transcriptDisplay.textContent = 'Press spacebar to speak...';
-        
-        feedbackContainer.appendChild(statusIndicator);
-        feedbackContainer.appendChild(transcriptDisplay);
-        
-        // Voice button
-        voiceButton = document.createElement('button');
-        voiceButton.id = 'voice-control-button';
-        voiceButton.innerHTML = `
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" x2="12" y1="19" y2="22"/>
-            </svg>
-        `;
-        voiceButton.style.cssText = `
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #38bdf8, #22d3ee);
-            border: none;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);
-            transition: all 0.2s;
-            position: relative;
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: all 0.3s;
         `;
         
-        // Pulse animation for listening state
+        // Quick help
+        const helpText = document.createElement('div');
+        helpText.style.cssText = `
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(239, 68, 68, 0.2);
+            font-size: 0.75rem;
+            color: #64748b;
+            line-height: 1.4;
+        `;
+        helpText.innerHTML = `
+            <div style="color: #ef4444; font-weight: 700; margin-bottom: 0.5rem;">QUICK COMMANDS:</div>
+            <div>• "level 7 rare have 3"</div>
+            <div>• "scouted 4"</div>
+            <div>• "bench 5"</div>
+            <div>• "add ditto"</div>
+            <div style="margin-top: 0.5rem; color: #475569;">
+                Hold <span style="background: rgba(239,68,68,0.2); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-family: monospace; color: #fca5a5;">SPACE</span> or click button
+            </div>
+        `;
+        
+        buttonCard.appendChild(voiceButton);
+        buttonCard.appendChild(timerDisplay);
+        buttonCard.appendChild(statusDisplay);
+        buttonCard.appendChild(transcriptDisplay);
+        buttonCard.appendChild(helpText);
+        container.appendChild(buttonCard);
+        document.body.appendChild(container);
+        
+        // Styles
         const style = document.createElement('style');
         style.textContent = `
-            @keyframes pulse {
-                0%, 100% { transform: scale(1); opacity: 1; }
-                50% { transform: scale(1.1); opacity: 0.8; }
+            @keyframes pulse-glow {
+                0%, 100% {
+                    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.6),
+                                inset 0 2px 4px rgba(255, 255, 255, 0.2);
+                }
+                50% {
+                    box-shadow: 0 4px 32px rgba(34, 197, 94, 1),
+                                0 0 40px rgba(34, 197, 94, 0.4),
+                                inset 0 2px 4px rgba(255, 255, 255, 0.2);
+                }
             }
             
             .voice-listening {
-                animation: pulse 1.5s ease-in-out infinite;
                 background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-                box-shadow: 0 4px 20px rgba(34, 197, 94, 0.6) !important;
+                border-color: #166534 !important;
+                animation: pulse-glow 1.5s ease-in-out infinite;
             }
             
             .voice-processing {
                 background: linear-gradient(135deg, #f59e0b, #d97706) !important;
-                box-shadow: 0 4px 20px rgba(245, 158, 11, 0.6) !important;
+                border-color: #b45309 !important;
             }
             
-            .voice-error {
-                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-                box-shadow: 0 4px 20px rgba(239, 68, 68, 0.6) !important;
+            .timer-active {
+                color: #22c55e !important;
+                text-shadow: 0 0 10px rgba(34, 197, 94, 0.5) !important;
             }
             
-            .feedback-visible {
+            .status-active {
+                color: #22c55e !important;
+            }
+            
+            .transcript-visible {
+                max-height: 200px !important;
                 opacity: 1 !important;
-                transform: translateY(0) !important;
+            }
+            
+            @media (max-width: 1024px) {
+                #voice-control-container {
+                    right: 1rem;
+                    width: 240px;
+                }
             }
             
             @media (max-width: 768px) {
                 #voice-control-container {
-                    bottom: 1rem;
-                    right: 1rem;
-                }
-                
-                #voice-control-button {
-                    width: 56px;
-                    height: 56px;
+                    position: relative;
+                    top: auto;
+                    right: auto;
+                    width: 100%;
+                    margin-bottom: 1rem;
                 }
             }
         `;
         document.head.appendChild(style);
-        
-        container.appendChild(feedbackContainer);
-        container.appendChild(voiceButton);
-        document.body.appendChild(container);
     }
     
     /**
      * Setup Event Listeners
      */
     function setupEventListeners() {
-        // Button click
-        voiceButton.addEventListener('mousedown', startListening);
-        voiceButton.addEventListener('mouseup', stopListening);
-        voiceButton.addEventListener('mouseleave', stopListening);
+        // Button events
+        voiceButton.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startListening();
+        });
         
-        // Keyboard (spacebar)
+        voiceButton.addEventListener('mouseup', () => {
+            stopListening();
+        });
+        
+        voiceButton.addEventListener('mouseleave', () => {
+            if (isListening) stopListening();
+        });
+        
+        // Spacebar events
         document.addEventListener('keydown', (e) => {
             if (e.key === config.pushToTalkKey && !e.repeat && !isInputFocused()) {
                 e.preventDefault();
@@ -272,6 +315,8 @@
         try {
             recognition.start();
             isListening = true;
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 100);
         } catch (error) {
             console.error('Failed to start recognition:', error);
         }
@@ -285,9 +330,20 @@
         
         try {
             recognition.stop();
+            clearInterval(timerInterval);
         } catch (error) {
             console.error('Failed to stop recognition:', error);
         }
+    }
+    
+    /**
+     * Update timer display
+     */
+    function updateTimer() {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        timerDisplay.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
     /**
@@ -295,8 +351,10 @@
      */
     function handleRecognitionStart() {
         voiceButton.classList.add('voice-listening');
-        updateStatus('Listening...', '#22c55e');
-        showFeedback();
+        timerDisplay.classList.add('timer-active');
+        statusDisplay.classList.add('status-active');
+        statusDisplay.textContent = '🔴 Listening...';
+        transcriptDisplay.classList.add('transcript-visible');
         transcriptDisplay.textContent = 'Listening...';
     }
     
@@ -315,7 +373,7 @@
         if (isFinal) {
             voiceButton.classList.remove('voice-listening');
             voiceButton.classList.add('voice-processing');
-            updateStatus('Processing...', '#f59e0b');
+            statusDisplay.textContent = 'Processing...';
             
             // Process command
             processCommand(transcript, confidence);
@@ -328,13 +386,11 @@
     function handleRecognitionError(event) {
         console.error('Recognition error:', event.error);
         voiceButton.classList.remove('voice-listening', 'voice-processing');
-        voiceButton.classList.add('voice-error');
-        updateStatus('Error: ' + event.error, '#ef4444');
+        statusDisplay.textContent = 'Error: ' + event.error;
+        statusDisplay.style.color = '#ef4444';
         
         setTimeout(() => {
-            voiceButton.classList.remove('voice-error');
-            updateStatus('Ready', '#64748b');
-            hideFeedback();
+            resetUI();
         }, 2000);
     }
     
@@ -344,35 +400,26 @@
     function handleRecognitionEnd() {
         isListening = false;
         voiceButton.classList.remove('voice-listening', 'voice-processing');
-    }
-    
-    /**
-     * Update Status Indicator
-     */
-    function updateStatus(text, color) {
-        const dot = statusIndicator.querySelector('.status-dot');
-        const span = statusIndicator.querySelector('span');
+        timerDisplay.classList.remove('timer-active');
+        statusDisplay.classList.remove('status-active');
         
-        if (dot) dot.style.background = color;
-        if (span) span.textContent = text;
-    }
-    
-    /**
-     * Show Feedback Container
-     */
-    function showFeedback() {
-        feedbackContainer.classList.add('feedback-visible');
-    }
-    
-    /**
-     * Hide Feedback Container
-     */
-    function hideFeedback() {
+        clearInterval(timerInterval);
+        timerDisplay.textContent = '0:00';
+        
         setTimeout(() => {
             if (!isListening) {
-                feedbackContainer.classList.remove('feedback-visible');
+                transcriptDisplay.classList.remove('transcript-visible');
+                resetUI();
             }
         }, 3000);
+    }
+    
+    /**
+     * Reset UI to default state
+     */
+    function resetUI() {
+        statusDisplay.textContent = 'Ready';
+        statusDisplay.style.color = '#64748b';
     }
     
     /**
@@ -382,125 +429,131 @@
         console.log(`🎤 Command: "${transcript}" (confidence: ${(confidence * 100).toFixed(1)}%)`);
         
         if (confidence < config.confidenceThreshold) {
-            transcriptDisplay.innerHTML = `<span style="color: #f59e0b;">⚠️ Low confidence. Try again?</span>`;
-            updateStatus('Low confidence', '#f59e0b');
-            hideFeedback();
+            transcriptDisplay.innerHTML = `<span style="color: #f59e0b;">⚠️ Low confidence</span>`;
+            statusDisplay.textContent = 'Try again?';
+            statusDisplay.style.color = '#f59e0b';
             return;
         }
         
-        const command = parseCommand(transcript.toLowerCase());
+        const commands = parseCommand(transcript.toLowerCase());
         
-        if (command.type === 'unknown') {
+        if (commands.length === 0) {
             transcriptDisplay.innerHTML = `<span style="color: #ef4444;">❌ Unknown command</span>`;
-            updateStatus('Unknown command', '#ef4444');
-            hideFeedback();
+            statusDisplay.textContent = 'Unknown command';
+            statusDisplay.style.color = '#ef4444';
             return;
         }
         
-        // Execute command
-        executeCommand(command);
+        // Execute all parsed commands
+        commands.forEach(cmd => executeCommand(cmd));
         
         // Add to history
         commandHistory.unshift({
             transcript,
-            command,
+            commands,
             timestamp: Date.now()
         });
         if (commandHistory.length > 10) commandHistory.pop();
         
         // Success feedback
-        transcriptDisplay.innerHTML = `<span style="color: #22c55e;">✓ ${command.feedback}</span>`;
-        updateStatus('Command executed', '#22c55e');
+        const feedback = commands.map(c => c.feedback).join(', ');
+        transcriptDisplay.innerHTML = `<span style="color: #22c55e;">✓ ${feedback}</span>`;
+        statusDisplay.textContent = 'Executed';
+        statusDisplay.style.color = '#22c55e';
         
-        // Audio feedback if enabled
-        if (config.audioFeedback && command.type === 'query') {
+        // Audio feedback if query
+        if (config.audioFeedback && commands.some(c => c.type === 'query')) {
             speakResults();
         }
-        
-        hideFeedback();
     }
     
     /**
-     * Parse Command from Transcript
+     * Parse Command from Transcript - supports chaining
      */
     function parseCommand(text) {
+        const commands = [];
+        
         // Level commands
-        if (text.match(/level (\d)/)) {
-            const level = parseInt(text.match(/level (\d)/)[1]);
+        const levelMatch = text.match(/level (\d)/);
+        if (levelMatch) {
+            const level = parseInt(levelMatch[1]);
             if (level >= 1 && level <= 9) {
-                return { type: 'level', value: level, feedback: `Level ${level}` };
+                commands.push({ type: 'level', value: level, feedback: `Level ${level}` });
             }
-        }
-        if (text.includes('level up')) {
-            return { type: 'level', value: 'up', feedback: 'Level up' };
-        }
-        if (text.includes('level down')) {
-            return { type: 'level', value: 'down', feedback: 'Level down' };
+        } else if (text.includes('level up')) {
+            commands.push({ type: 'level', value: 'up', feedback: 'Level up' });
+        } else if (text.includes('level down')) {
+            commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
         }
         
         // Rarity commands
         const rarities = ['common', 'uncommon', 'rare', 'epic', 'ultra'];
         for (const rarity of rarities) {
             if (text.includes(rarity)) {
-                return { type: 'rarity', value: rarity, feedback: `Target: ${rarity}` };
+                commands.push({ type: 'rarity', value: rarity, feedback: rarity });
+                break;
             }
         }
         
         // Evolution commands
-        if (text.match(/two star|2 star|two\*/)) {
-            return { type: 'evolution', value: 'twoStar', feedback: '2★ max' };
-        }
-        if (text.match(/three star|3 star|three\*/)) {
-            return { type: 'evolution', value: 'threeStar', feedback: '3★ max' };
+        if (text.match(/two star|2 star|two\s*\*/)) {
+            commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
+        } else if (text.match(/three star|3 star|three\s*\*/)) {
+            commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
         }
         
         // Copies owned
-        if (text.match(/(have|own|got) (\d+)/)) {
-            const copies = parseInt(text.match(/(have|own|got) (\d+)/)[2]);
-            return { type: 'copies', value: copies, feedback: `Owned: ${copies}` };
+        const copiesMatch = text.match(/(have|own|got)\s+(\d+)/);
+        if (copiesMatch) {
+            const copies = parseInt(copiesMatch[2]);
+            commands.push({ type: 'copies', value: copies, feedback: `Own ${copies}` });
         }
         
         // Scouting
-        if (text.match(/(scout|scouted|taken) (\d+)/)) {
-            const copies = parseInt(text.match(/(scout|scouted|taken) (\d+)/)[2]);
-            return { type: 'scouting', value: copies, feedback: `Scouted: ${copies}` };
+        const scoutMatch = text.match(/(scout|scouted|taken)\s+(\d+)/);
+        if (scoutMatch) {
+            const copies = parseInt(scoutMatch[2]);
+            commands.push({ type: 'scouting', value: copies, feedback: `Scouted ${copies}` });
         }
         
         // Bench
-        if (text.match(/(bench|benched) (\d+)/)) {
-            const units = parseInt(text.match(/(bench|benched) (\d+)/)[2]);
-            return { type: 'bench', value: units, feedback: `Bench: ${units}` };
+        const benchMatch = text.match(/(bench|benched)\s+(\d+)/);
+        if (benchMatch) {
+            const units = parseInt(benchMatch[2]);
+            commands.push({ type: 'bench', value: units, feedback: `Bench ${units}` });
         }
         
         // Ditto
-        if (text.match(/(add|enable|include) ditto/)) {
-            return { type: 'ditto', value: true, feedback: 'Ditto enabled' };
-        }
-        if (text.match(/(remove|disable|exclude) ditto/)) {
-            return { type: 'ditto', value: false, feedback: 'Ditto disabled' };
+        if (text.match(/(add|enable|include)\s+ditto/)) {
+            commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
+        } else if (text.match(/(remove|disable|exclude)\s+ditto/)) {
+            commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
         }
         
         // Refreshes
-        if (text.match(/(\d+) refresh/)) {
-            const refreshes = parseInt(text.match(/(\d+) refresh/)[1]);
-            return { type: 'refreshes', value: refreshes, feedback: `Check ${refreshes} refreshes` };
-        }
-        if (text.match(/check (\d+)/)) {
-            const refreshes = parseInt(text.match(/check (\d+)/)[1]);
-            return { type: 'refreshes', value: refreshes, feedback: `Check ${refreshes} refreshes` };
+        const refreshMatch = text.match(/(\d+)\s+refresh/);
+        if (refreshMatch) {
+            const refreshes = parseInt(refreshMatch[1]);
+            commands.push({ type: 'refreshes', value: refreshes, feedback: `${refreshes} refreshes` });
+        } else {
+            const checkMatch = text.match(/check\s+(\d+)/);
+            if (checkMatch) {
+                const refreshes = parseInt(checkMatch[1]);
+                commands.push({ type: 'refreshes', value: refreshes, feedback: `${refreshes} refreshes` });
+            }
         }
         
         // Query commands
-        if (text.match(/(what are|tell me|read) (my )?odds/)) {
-            return { type: 'query', feedback: 'Reading results' };
+        if (text.match(/(what are|tell me|read)\s+(my\s+)?odds/)) {
+            commands.push({ type: 'query', feedback: 'Reading odds' });
         }
         
         // Clear/Reset
         if (text.includes('clear') || text.includes('reset')) {
-            return { type: 'clear', feedback: 'Cleared inputs' };
+            commands.push({ type: 'clear', feedback: 'Cleared' });
         }
         
-        return { type: 'unknown' };
+        return commands;
     }
     
     /**
@@ -510,19 +563,14 @@
         const state = window.calculatorState;
         if (!state) return;
         
-        // Find the React component instance (hacky but works)
-        const root = document.getElementById('root');
-        const reactRoot = root?._reactRootContainer?._internalRoot?.current;
-        
-        // Trigger state updates by dispatching events to the calculator
         switch (command.type) {
             case 'level':
                 if (command.value === 'up') {
-                    simulateSelect('select', Math.min(9, state.level + 1));
+                    simulateSelect('select', Math.min(9, state.level + 1), 0);
                 } else if (command.value === 'down') {
-                    simulateSelect('select', Math.max(1, state.level - 1));
+                    simulateSelect('select', Math.max(1, state.level - 1), 0);
                 } else {
-                    simulateSelect('select', command.value);
+                    simulateSelect('select', command.value, 0);
                 }
                 break;
                 
@@ -555,10 +603,10 @@
                 break;
                 
             case 'clear':
-                const clearBtn = document.querySelector('button');
-                if (clearBtn && clearBtn.textContent.includes('Clear')) {
-                    clearBtn.click();
-                }
+                const clearBtn = Array.from(document.querySelectorAll('button')).find(btn => 
+                    btn.textContent.includes('Clear All')
+                );
+                if (clearBtn) clearBtn.click();
                 break;
         }
     }
@@ -580,29 +628,29 @@
      */
     function simulateInput(type, value, hint) {
         const inputs = document.querySelectorAll(`input[type="${type}"]`);
-        
-        // Find the right input based on context
         let targetInput = null;
         
         if (hint === 'copies owned') {
             targetInput = Array.from(inputs).find(input => {
-                const label = input.previousElementSibling?.textContent || '';
+                const label = input.closest('div')?.querySelector('label')?.textContent || '';
                 return label.toLowerCase().includes('copies you have');
             });
         } else if (hint === 'scouting') {
             targetInput = Array.from(inputs).find(input => {
                 const card = input.closest('.bg-gradient-to-br');
-                return card?.textContent.includes('Scouting');
+                const heading = card?.querySelector('h2')?.textContent || '';
+                return heading.toLowerCase().includes('scouting');
             });
         } else if (hint === 'bench') {
             targetInput = Array.from(inputs).find(input => {
                 const card = input.closest('.bg-gradient-to-br');
-                return card?.textContent.includes('Your Bench');
+                const heading = card?.querySelector('h2')?.textContent || '';
+                return heading.toLowerCase().includes('bench');
             });
         } else if (hint === 'refreshes') {
             targetInput = Array.from(inputs).find(input => {
-                const label = input.previousElementSibling?.textContent || '';
-                return label.toLowerCase().includes('refreshes');
+                const label = input.closest('div')?.querySelector('label')?.textContent || '';
+                return label.toLowerCase().includes('refreshes to check');
             });
         }
         
@@ -618,8 +666,8 @@
      */
     function simulateCheckbox(checked, hint) {
         const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-        
         let targetCheckbox = null;
+        
         if (hint === 'ditto') {
             targetCheckbox = Array.from(checkboxes).find(cb => {
                 const label = cb.parentElement?.textContent || '';
@@ -650,8 +698,10 @@
         window.speechSynthesis.speak(utterance);
     }
     
-    // Expose API
+    // Expose API - NOW WITH START/STOP METHODS
     window.voiceControl = {
+        startListening,
+        stopListening,
         isEnabled: () => !!recognition,
         isListening: () => isListening,
         toggleAudioFeedback: () => {
@@ -661,21 +711,19 @@
         },
         getHistory: () => commandHistory,
         testCommand: (text) => {
-            const command = parseCommand(text.toLowerCase());
-            console.log('Parsed command:', command);
-            if (command.type !== 'unknown') {
-                executeCommand(command);
-            }
-            return command;
+            const commands = parseCommand(text.toLowerCase());
+            console.log('Parsed commands:', commands);
+            commands.forEach(cmd => executeCommand(cmd));
+            return commands;
         }
     };
     
-    // Initialize after DOM loads
+    // Initialize
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
         setTimeout(init, 500);
     }
     
-    console.log('✓ Voice Control module loaded');
+    console.log('✓ Voice Control module loaded (top-right placement)');
 })();
