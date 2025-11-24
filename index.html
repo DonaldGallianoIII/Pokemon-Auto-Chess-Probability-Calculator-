@@ -173,6 +173,8 @@
             background: linear-gradient(135deg, #000000 0%, #0f172a 50%, #1e3a5f 100%);
             color: white;
             padding: 2rem;
+            padding-bottom: 4rem;
+            min-height: 100vh;
         }
         
         .analytics-header {
@@ -191,7 +193,7 @@
         
         .analytics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
             gap: 1.5rem;
             max-width: 1600px;
             margin: 0 auto;
@@ -202,7 +204,11 @@
             border: 1px solid rgba(56, 189, 248, 0.2);
             border-radius: 1.5rem;
             padding: 1.5rem;
+            padding-bottom: 1rem;
             backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            min-height: 450px;
         }
         
         .chart-card h3 {
@@ -213,11 +219,13 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            flex-shrink: 0;
         }
         
         .chart-container {
             width: 100%;
-            height: 350px;
+            flex: 1;
+            min-height: 300px;
             position: relative;
         }
         
@@ -279,13 +287,16 @@
             stroke-dasharray: 2, 2;
         }
         
-        /* Legend */
+        /* Legend - inside cards */
         .chart-legend {
             display: flex;
             flex-wrap: wrap;
             gap: 1rem;
-            margin-top: 1rem;
+            padding-top: 0.75rem;
             justify-content: center;
+            flex-shrink: 0;
+            border-top: 1px solid rgba(56, 189, 248, 0.1);
+            margin-top: 0.75rem;
         }
         
         .legend-item {
@@ -300,6 +311,7 @@
             width: 12px;
             height: 12px;
             border-radius: 2px;
+            flex-shrink: 0;
         }
         
         /* No data state */
@@ -320,17 +332,32 @@
         }
 
         /* Mobile responsiveness */
+        @media (max-width: 1024px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
         @media (max-width: 768px) {
             .analytics-grid {
                 grid-template-columns: 1fr;
             }
             
+            .chart-card {
+                min-height: 400px;
+            }
+            
             .chart-container {
-                height: 300px;
+                min-height: 280px;
             }
             
             .nav-brand {
                 font-size: 1rem;
+            }
+            
+            #page-analytics {
+                padding: 1rem;
+                padding-bottom: 3rem;
             }
         }
     </style>
@@ -1834,17 +1861,22 @@
                     if (!state || !state.probabilities) return [];
                     
                     const baseProb = state.probabilities.perRefresh;
+                    if (baseProb === 0) return [];
+                    
                     const factors = [];
                     
                     // Level impact (+1 level)
                     if (state.level < 9) {
                         const levelData = this.getLevelComparison();
                         const nextLevelProb = levelData[state.level]?.perRefresh || 0;
-                        factors.push({
-                            name: 'Level +1',
-                            impact: nextLevelProb - baseProb,
-                            type: nextLevelProb >= baseProb ? 'positive' : 'negative'
-                        });
+                        const impact = nextLevelProb - baseProb;
+                        if (Math.abs(impact) > 0.01) {
+                            factors.push({
+                                name: 'Level +1',
+                                impact: impact,
+                                type: impact >= 0 ? 'positive' : 'negative'
+                            });
+                        }
                     }
                     
                     // Ditto impact
@@ -1855,11 +1887,12 @@
                         type: 'positive'
                     });
                     
-                    // Copies taken impact (if any taken)
+                    // Copies taken impact (simulate having 3 less copies taken)
                     if (state.copiesTaken > 0) {
+                        const impactPerCopy = baseProb * 0.08; // ~8% reduction per copy taken
                         factors.push({
-                            name: `Copies Taken (${state.copiesTaken})`,
-                            impact: -Math.abs(baseProb * (state.copiesTaken / state.probabilities.maxTargetCopies) * 0.5),
+                            name: `Scouted Units (-${state.copiesTaken})`,
+                            impact: -state.copiesTaken * impactPerCopy,
                             type: 'negative'
                         });
                     }
@@ -1867,24 +1900,37 @@
                     // Wild boost impact (if PVE)
                     if (state.pveRoundEnabled && state.targetIsWild) {
                         factors.push({
-                            name: 'Wild Boost (PvE)',
-                            impact: state.probabilities.wildBoost * 0.5,
+                            name: 'PvE Wild Boost',
+                            impact: state.probabilities.wildBoost * 0.4,
                             type: 'positive'
                         });
                     } else if (state.pveRoundEnabled && !state.targetIsWild) {
                         factors.push({
-                            name: 'Wild Penalty (PvE)',
-                            impact: -state.probabilities.wildBoost * 0.3,
+                            name: 'PvE Wild Penalty',
+                            impact: -state.probabilities.wildBoost * 0.25,
                             type: 'negative'
                         });
                     }
                     
-                    // Bench impact
+                    // Bench impact (removing units from pool helps you)
                     if (state.benchUnits > 0) {
+                        const impactPerBench = baseProb * 0.03;
                         factors.push({
-                            name: `Bench Units (${state.benchUnits})`,
-                            impact: baseProb * (state.benchUnits / state.probabilities.totalPoolSize) * 2,
+                            name: `Bench Units (+${state.benchUnits})`,
+                            impact: state.benchUnits * impactPerBench,
                             type: 'positive'
+                        });
+                    }
+                    
+                    // Pool dilution from add picks
+                    const totalAddPicks = (state.round5Enabled ? state.round5AddPicks : 0) +
+                                         (state.round8Enabled ? state.round8AddPicks : 0) +
+                                         (state.round11Enabled ? state.round11AddPicks : 0);
+                    if (totalAddPicks > 0) {
+                        factors.push({
+                            name: `Pool Dilution (${totalAddPicks} adds)`,
+                            impact: -totalAddPicks * baseProb * 0.02,
+                            type: 'negative'
                         });
                     }
                     
