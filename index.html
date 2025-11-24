@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokémon Auto Chess Pool Calculator</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useMemo } = React;
+
+        // Lucide icons as inline SVG components
+        const Calculator = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="16" height="20" x="4" y="2" rx="2"/>
+                <line x1="8" x2="16" y1="6" y2="6"/>
+                <line x1="16" x2="16" y1="14" y2="14"/>
+                <path d="M16 10h.01"/>
+                <path d="M12 10h.01"/>
+                <path d="M8 10h.01"/>
+                <path d="M12 14h.01"/>
+                <path d="M8 14h.01"/>
+                <path d="M12 18h.01"/>
+                <path d="M8 18h.01"/>
+            </svg>
+        );
+
+        const TrendingUp = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+                <polyline points="16 7 22 7 22 13"/>
+            </svg>
+        );
+
+        const ChevronDown = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+            </svg>
+        );
+
+        const PokemonAutoChessCalculator = () => {
+            // Base game data
+            const baseGamePools = {
+                common: { twoStar: 2, threeStar: 19 },
+                uncommon: { twoStar: 5, threeStar: 15 },
+                rare: { twoStar: 3, threeStar: 15 },
+                epic: { twoStar: 1, threeStar: 16 },
+                ultra: { twoStar: 0, threeStar: 13 }
+            };
+
+            const poolCopies = {
+                common: { twoStar: 18, threeStar: 27 },
+                uncommon: { twoStar: 13, threeStar: 22 },
+                rare: { twoStar: 9, threeStar: 18 },
+                epic: { twoStar: 7, threeStar: 14 },
+                ultra: { twoStar: 5, threeStar: 10 }
+            };
+
+            const shopOdds = {
+                1: { common: 100, uncommon: 0, rare: 0, epic: 0, ultra: 0 },
+                2: { common: 100, uncommon: 0, rare: 0, epic: 0, ultra: 0 },
+                3: { common: 70, uncommon: 30, rare: 0, epic: 0, ultra: 0 },
+                4: { common: 50, uncommon: 40, rare: 10, epic: 0, ultra: 0 },
+                5: { common: 36, uncommon: 42, rare: 20, epic: 2, ultra: 0 },
+                6: { common: 25, uncommon: 40, rare: 30, epic: 5, ultra: 0 },
+                7: { common: 16, uncommon: 33, rare: 35, epic: 15, ultra: 1 },
+                8: { common: 11, uncommon: 27, rare: 35, epic: 22, ultra: 5 },
+                9: { common: 5, uncommon: 20, rare: 35, epic: 30, ultra: 10 }
+            };
+
+            // Base Wild counts
+            const baseWildCounts = {
+                common: { twoStar: 2, threeStar: 0 },
+                uncommon: { twoStar: 4, threeStar: 0 },
+                rare: { twoStar: 4, threeStar: 0 },
+                epic: { twoStar: 2, threeStar: 1 },
+                ultra: { twoStar: 0, threeStar: 1 }
+            };
+
+            // State
+            const [level, setLevel] = useState(7);
+            const [targetRarity, setTargetRarity] = useState('rare');
+            const [targetEvo, setTargetEvo] = useState('threeStar');
+            const [refreshes, setRefreshes] = useState(10);
+            const [copiesTaken, setCopiesTaken] = useState(0);
+            const [benchUnits, setBenchUnits] = useState(0);
+            const [evolutionGoal, setEvolutionGoal] = useState('firstEvo');
+            const [copiesOwned, setCopiesOwned] = useState(0);
+            const [dittoEnabled, setDittoEnabled] = useState(false);
+
+            // Add Picks (formerly Regional Additions) - simplified to single input
+            const [round5Enabled, setRound5Enabled] = useState(false);
+            const [round5AddPicks, setRound5AddPicks] = useState(8);
+
+            const [round8Enabled, setRound8Enabled] = useState(false);
+            const [round8AddPicks, setRound8AddPicks] = useState(8);
+
+            const [round11Enabled, setRound11Enabled] = useState(false);
+            const [round11AddPicks, setRound11AddPicks] = useState(8);
+
+            // Portal regionals
+            const [portalRegionals, setPortalRegionals] = useState({
+                common: { twoStar: 0, threeStar: 0 },
+                uncommon: { twoStar: 0, threeStar: 0 },
+                rare: { twoStar: 0, threeStar: 0 },
+                epic: { twoStar: 0, threeStar: 0 },
+                ultra: { twoStar: 0, threeStar: 0 }
+            });
+
+            // Wild mechanics state
+            const [wildExpanded, setWildExpanded] = useState(false);
+            const [targetIsWild, setTargetIsWild] = useState(false);
+            const [pveRoundEnabled, setPveRoundEnabled] = useState(false);
+            const [wildUnitsOwned, setWildUnitsOwned] = useState(0);
+            const [wildAddPicks, setWildAddPicks] = useState({
+                uncommon: 0,
+                rare: 0,
+                epic: 0
+            });
+            const [wildRegionals, setWildRegionals] = useState({
+                common: { twoStar: 0, threeStar: 0 },
+                uncommon: { twoStar: 0, threeStar: 0 },
+                rare: { twoStar: 0, threeStar: 0 },
+                epic: { twoStar: 0, threeStar: 0 },
+                ultra: { twoStar: 0, threeStar: 0 }
+            });
+
+            // Clear all inputs
+            const clearInputs = () => {
+                setCopiesTaken(0);
+                setBenchUnits(0);
+                setCopiesOwned(0);
+                setDittoEnabled(false);
+                setRound5Enabled(false);
+                setRound5AddPicks(8);
+                setRound8Enabled(false);
+                setRound8AddPicks(8);
+                setRound11Enabled(false);
+                setRound11AddPicks(8);
+                setPortalRegionals({
+                    common: { twoStar: 0, threeStar: 0 },
+                    uncommon: { twoStar: 0, threeStar: 0 },
+                    rare: { twoStar: 0, threeStar: 0 },
+                    epic: { twoStar: 0, threeStar: 0 },
+                    ultra: { twoStar: 0, threeStar: 0 }
+                });
+                setTargetIsWild(false);
+                setPveRoundEnabled(false);
+                setWildUnitsOwned(0);
+                setWildAddPicks({ uncommon: 0, rare: 0, epic: 0 });
+                setWildRegionals({
+                    common: { twoStar: 0, threeStar: 0 },
+                    uncommon: { twoStar: 0, threeStar: 0 },
+                    rare: { twoStar: 0, threeStar: 0 },
+                    epic: { twoStar: 0, threeStar: 0 },
+                    ultra: { twoStar: 0, threeStar: 0 }
+                });
+            };
+
+            // Calculate total Wild counts per rarity
+            const totalWildCounts = useMemo(() => {
+                const counts = {};
+                
+                Object.keys(baseWildCounts).forEach(rarity => {
+                    let twoStarCount = baseWildCounts[rarity].twoStar;
+                    let threeStarCount = baseWildCounts[rarity].threeStar;
+
+                    // Add pick wilds (always 2★-max)
+                    if (rarity === 'uncommon' && round5Enabled) {
+                        twoStarCount += wildAddPicks.uncommon;
+                    }
+                    if (rarity === 'rare' && round8Enabled) {
+                        twoStarCount += wildAddPicks.rare;
+                    }
+                    if (rarity === 'epic' && round11Enabled) {
+                        twoStarCount += wildAddPicks.epic;
+                    }
+
+                    // Regional wilds
+                    twoStarCount += wildRegionals[rarity].twoStar;
+                    threeStarCount += wildRegionals[rarity].threeStar;
+
+                    counts[rarity] = {
+                        twoStar: twoStarCount,
+                        threeStar: threeStarCount,
+                        total: twoStarCount + threeStarCount
+                    };
+                });
+
+                return counts;
+            }, [round5Enabled, round8Enabled, round11Enabled, wildAddPicks, wildRegionals]);
+
+            // Calculate total pool for each rarity
+            const calculateTotalPool = useMemo(() => {
+                const pools = {};
+                
+                Object.keys(baseGamePools).forEach(rarity => {
+                    let twoStarSpecies = baseGamePools[rarity].twoStar;
+                    let threeStarSpecies = baseGamePools[rarity].threeStar;
+
+                    // Add round-based add picks (always 2★-max)
+                    if (rarity === 'uncommon' && round5Enabled) {
+                        twoStarSpecies += round5AddPicks;
+                    }
+                    if (rarity === 'rare' && round8Enabled) {
+                        twoStarSpecies += round8AddPicks;
+                    }
+                    if (rarity === 'epic' && round11Enabled) {
+                        twoStarSpecies += round11AddPicks;
+                    }
+
+                    // Add portal regionals
+                    twoStarSpecies += portalRegionals[rarity].twoStar;
+                    threeStarSpecies += portalRegionals[rarity].threeStar;
+
+                    const twoStarCopies = twoStarSpecies * poolCopies[rarity].twoStar;
+                    const threeStarCopies = threeStarSpecies * poolCopies[rarity].threeStar;
+
+                    pools[rarity] = {
+                        twoStarTotal: twoStarCopies,
+                        threeStarTotal: threeStarCopies,
+                        total: twoStarCopies + threeStarCopies,
+                        twoStarSpecies,
+                        threeStarSpecies
+                    };
+                });
+
+                return pools;
+            }, [round5Enabled, round5AddPicks,
+                round8Enabled, round8AddPicks,
+                round11Enabled, round11AddPicks,
+                portalRegionals]);
+
+            // Calculate probabilities
+            const probabilities = useMemo(() => {
+                const rarityOdds = shopOdds[level];
+                const pool = calculateTotalPool[targetRarity];
+                
+                const rarityChance = rarityOdds[targetRarity] / 100;
+                
+                const maxTargetCopies = targetEvo === 'twoStar' ? 
+                    poolCopies[targetRarity].twoStar : 
+                    poolCopies[targetRarity].threeStar;
+                
+                const targetCopies = Math.max(0, maxTargetCopies - copiesTaken);
+                
+                const relevantPoolBeforeBench = targetEvo === 'twoStar' ? 
+                    pool.twoStarTotal : pool.threeStarTotal;
+                const otherPoolPortion = targetEvo === 'twoStar' ? 
+                    pool.threeStarTotal : pool.twoStarTotal;
+                
+                const relevantPoolAfterBench = Math.max(0, relevantPoolBeforeBench - benchUnits);
+                const totalPoolSize = relevantPoolAfterBench + otherPoolPortion;
+                
+                // Wild boost calculation
+                const wildBoost = (pveRoundEnabled && targetIsWild) ? 
+                    (0.05 + (wildUnitsOwned * 0.01)) : 0;
+                
+                // Base probability calculation
+                let perSlotProbTarget = 0;
+                
+                if (targetCopies > 0 && totalPoolSize > 0) {
+                    const baseProb = rarityChance * (targetCopies / totalPoolSize);
+                    
+                    if (targetIsWild && pveRoundEnabled) {
+                        // Wild target: two paths
+                        // Path A: Wild boost triggers → correct rarity → specific Wild
+                        const wildCountsForRarity = totalWildCounts[targetRarity];
+                        const totalWildCopies = targetEvo === 'twoStar' ?
+                            wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
+                            wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
+                        
+                        const pathA = totalWildCopies > 0 ? 
+                            wildBoost * rarityChance * (targetCopies / totalWildCopies) : 0;
+                        
+                        // Path B: Wild boost misses → normal shop
+                        const pathB = (1 - wildBoost) * baseProb;
+                        
+                        perSlotProbTarget = pathA + pathB;
+                    } else if (!targetIsWild && pveRoundEnabled) {
+                        // Non-Wild target during PVE: penalty
+                        perSlotProbTarget = baseProb * (1 - wildBoost);
+                    } else {
+                        // Normal calculation
+                        perSlotProbTarget = baseProb;
+                    }
+                }
+                
+                const dittoProb = 0.005;
+                const perSlotProbWithDitto = perSlotProbTarget + dittoProb;
+                
+                const perRefreshProbNoDitto = 1 - Math.pow(1 - perSlotProbTarget, 6);
+                const perRefreshProbWithDitto = 1 - Math.pow(1 - perSlotProbWithDitto, 6);
+                const perRefreshProb = dittoEnabled ? perRefreshProbWithDitto : perRefreshProbNoDitto;
+                
+                const overNRefreshes = 1 - Math.pow(1 - perRefreshProb, refreshes);
+                
+                const expectedFor50 = perRefreshProb > 0 ? Math.log(0.5) / Math.log(1 - perRefreshProb) : Infinity;
+                const expectedFor75 = perRefreshProb > 0 ? Math.log(0.25) / Math.log(1 - perRefreshProb) : Infinity;
+                const expectedFor90 = perRefreshProb > 0 ? Math.log(0.1) / Math.log(1 - perRefreshProb) : Infinity;
+
+                const totalCopiesNeeded = evolutionGoal === 'firstEvo' ? 3 : 9;
+                const copiesStillNeeded = Math.max(0, totalCopiesNeeded - copiesOwned);
+                const expectedCopiesPerRefresh = 6 * (dittoEnabled ? perSlotProbWithDitto : perSlotProbTarget);
+                
+                const approxRefreshesFor50Copies = expectedCopiesPerRefresh > 0 && copiesStillNeeded > 0 ? 
+                    copiesStillNeeded / expectedCopiesPerRefresh : Infinity;
+                const approxRefreshesFor75Copies = expectedCopiesPerRefresh > 0 && copiesStillNeeded > 0 ?
+                    copiesStillNeeded / expectedCopiesPerRefresh * 1.4 : Infinity;
+                const approxRefreshesFor90Copies = expectedCopiesPerRefresh > 0 && copiesStillNeeded > 0 ?
+                    copiesStillNeeded / expectedCopiesPerRefresh * 1.8 : Infinity;
+
+                let levelUpPreview = null;
+                if (level < 9) {
+                    const nextLevelOdds = shopOdds[level + 1];
+                    const nextRarityChance = nextLevelOdds[targetRarity] / 100;
+                    let nextPerSlotProb = 0;
+                    
+                    if (targetCopies > 0 && totalPoolSize > 0) {
+                        const nextBaseProb = nextRarityChance * (targetCopies / totalPoolSize);
+                        
+                        if (targetIsWild && pveRoundEnabled) {
+                            const wildCountsForRarity = totalWildCounts[targetRarity];
+                            const totalWildCopies = targetEvo === 'twoStar' ?
+                                wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
+                                wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
+                            
+                            const pathA = totalWildCopies > 0 ? 
+                                wildBoost * nextRarityChance * (targetCopies / totalWildCopies) : 0;
+                            const pathB = (1 - wildBoost) * nextBaseProb;
+                            nextPerSlotProb = pathA + pathB;
+                        } else if (!targetIsWild && pveRoundEnabled) {
+                            nextPerSlotProb = nextBaseProb * (1 - wildBoost);
+                        } else {
+                            nextPerSlotProb = nextBaseProb;
+                        }
+                    }
+                    
+                    const nextPerSlotProbWithDitto = nextPerSlotProb + dittoProb;
+                    const nextPerRefreshProb = dittoEnabled ? 
+                        1 - Math.pow(1 - nextPerSlotProbWithDitto, 6) :
+                        1 - Math.pow(1 - nextPerSlotProb, 6);
+                    
+                    levelUpPreview = {
+                        nextLevel: level + 1,
+                        perSlot: nextPerSlotProb * 100,
+                        perRefresh: nextPerRefreshProb * 100,
+                        improvementPercent: perRefreshProb > 0 ? 
+                            ((nextPerRefreshProb - perRefreshProb) / perRefreshProb * 100) : 0
+                    };
+                }
+
+                return {
+                    perSlot: perSlotProbTarget * 100,
+                    perSlotWithDitto: perSlotProbWithDitto * 100,
+                    perRefresh: perRefreshProbNoDitto * 100,
+                    perRefreshWithDitto: perRefreshProbWithDitto * 100,
+                    overNRefreshes: overNRefreshes * 100,
+                    expectedFor50: Math.ceil(expectedFor50),
+                    expectedFor75: Math.ceil(expectedFor75),
+                    expectedFor90: Math.ceil(expectedFor90),
+                    goldFor50: Math.ceil(approxRefreshesFor50Copies),
+                    goldFor75: Math.ceil(approxRefreshesFor75Copies),
+                    goldFor90: Math.ceil(approxRefreshesFor90Copies),
+                    totalCopiesNeeded,
+                    copiesStillNeeded,
+                    targetCopies,
+                    maxTargetCopies,
+                    totalPoolSize,
+                    relevantPoolBeforeBench,
+                    rarityChance: rarityChance * 100,
+                    levelUpPreview,
+                    dittoProb: dittoProb * 100,
+                    wildBoost: wildBoost * 100
+                };
+            }, [level, targetRarity, targetEvo, refreshes, calculateTotalPool, copiesTaken, benchUnits, 
+                evolutionGoal, copiesOwned, dittoEnabled, targetIsWild, pveRoundEnabled, wildUnitsOwned, totalWildCounts]);
+
+            const updatePortalRegional = (rarity, evo, value) => {
+                setPortalRegionals(prev => ({
+                    ...prev,
+                    [rarity]: {
+                        ...prev[rarity],
+                        [evo]: Math.max(0, parseInt(value) || 0)
+                    }
+                }));
+            };
+
+            const updateWildRegional = (rarity, evo, value) => {
+                setWildRegionals(prev => ({
+                    ...prev,
+                    [rarity]: {
+                        ...prev[rarity],
+                        [evo]: Math.max(0, parseInt(value) || 0)
+                    }
+                }));
+            };
+
+            const rarityColors = {
+                common: 'text-gray-400',
+                uncommon: 'text-green-400',
+                rare: 'text-cyan-400',
+                epic: 'text-purple-400',
+                ultra: 'text-red-400'
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-black via-slate-900 to-blue-950 text-white p-8">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Header */}
+                        <div className="text-center mb-12">
+                            <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 rounded-full border border-blue-500/30 backdrop-blur-sm mb-4">
+                                <Calculator className="w-6 h-6 text-cyan-400" />
+                                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                                    Pokémon Auto Chess Pool Calculator
+                                </h1>
+                            </div>
+                            <p className="text-gray-400 text-sm">Real-time odds calculation for competitive play</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Left Column - Configuration */}
+                            <div className="lg:col-span-2 space-y-6">
+                                {/* Target Configuration Card */}
+                                <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border border-slate-700/50 shadow-2xl">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                                                <TrendingUp className="w-5 h-5 text-white" />
+                                            </div>
+                                            <h2 className="text-2xl font-bold">Target Configuration</h2>
+                                        </div>
+                                        <button
+                                            onClick={clearInputs}
+                                            className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 rounded-full text-sm font-semibold transition-all duration-200 shadow-lg hover:shadow-red-500/50"
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Your Level</label>
+                                            <select 
+                                                value={level} 
+                                                onChange={(e) => setLevel(parseInt(e.target.value))}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                            >
+                                                {[1,2,3,4,5,6,7,8,9].map(l => (
+                                                    <option key={l} value={l}>Level {l}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Refreshes to Check</label>
+                                            <input 
+                                                type="number" 
+                                                value={refreshes}
+                                                onChange={(e) => setRefreshes(Math.max(1, parseInt(e.target.value) || 1))}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                                min="1"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Target Rarity</label>
+                                            <select 
+                                                value={targetRarity}
+                                                onChange={(e) => setTargetRarity(e.target.value)}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                            >
+                                                <option value="common">Common</option>
+                                                <option value="uncommon">Uncommon</option>
+                                                <option value="rare">Rare</option>
+                                                <option value="epic">Epic</option>
+                                                <option value="ultra">Ultra</option>
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Max Evolution</label>
+                                            <select 
+                                                value={targetEvo}
+                                                onChange={(e) => setTargetEvo(e.target.value)}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                            >
+                                                <option value="twoStar">2★ Max</option>
+                                                <option value="threeStar">3★ Max</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-6">
+                                        <label className="block text-sm font-semibold mb-2 text-gray-300">Evolution Goal</label>
+                                        <select
+                                            value={evolutionGoal}
+                                            onChange={(e) => setEvolutionGoal(e.target.value)}
+                                            className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        >
+                                            <option value="firstEvo">First Evolution (3 copies)</option>
+                                            {targetEvo === 'threeStar' && (
+                                                <option value="maxEvo">Max Evolution (9 copies)</option>
+                                            )}
+                                        </select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Copies You Have</label>
+                                            <input 
+                                                type="number"
+                                                value={copiesOwned}
+                                                onChange={(e) => setCopiesOwned(Math.max(0, Math.min(probabilities.totalCopiesNeeded, parseInt(e.target.value) || 0)))}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                                min="0"
+                                                max={probabilities.totalCopiesNeeded}
+                                            />
+                                            <div className="text-xs text-cyan-400 mt-2 font-medium">
+                                                Need {probabilities.copiesStillNeeded} more
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center">
+                                            <label className="flex items-center gap-3 cursor-pointer px-4 py-3 bg-slate-900/30 rounded-2xl border border-slate-600/30 hover:border-cyan-500/50 transition-all w-full">
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={dittoEnabled}
+                                                    onChange={(e) => setDittoEnabled(e.target.checked)}
+                                                    className="w-5 h-5 accent-cyan-500"
+                                                />
+                                                <div>
+                                                    <span className="font-semibold text-cyan-400">Include Ditto</span>
+                                                    <div className="text-xs text-gray-400">0.5% per slot</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Scouting & Bench Row */}
+                                <div className="grid grid-cols-2 gap-6">
+                                    {/* Scouting Card */}
+                                    <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-700/50 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-lg">
+                                                👁️
+                                            </div>
+                                            <h2 className="text-xl font-bold">Scouting</h2>
+                                        </div>
+                                        <p className="text-sm text-gray-400 mb-4">
+                                            Copies on opponent boards
+                                        </p>
+                                        <div>
+                                            <input 
+                                                type="number"
+                                                value={copiesTaken}
+                                                onChange={(e) => setCopiesTaken(Math.max(0, parseInt(e.target.value) || 0))}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                                                min="0"
+                                                max={probabilities.maxTargetCopies}
+                                            />
+                                            <div className="flex justify-between items-center mt-2">
+                                                <div className={`text-xs font-semibold ${
+                                                    probabilities.targetCopies === 0 ? 'text-red-400' :
+                                                    probabilities.targetCopies <= 3 ? 'text-yellow-400' :
+                                                    'text-cyan-400'
+                                                }`}>
+                                                    {probabilities.targetCopies === 0 ? '❌ Pool depleted!' :
+                                                     probabilities.targetCopies <= 3 ? `⚠️ Only ${probabilities.targetCopies} left!` :
+                                                     `✓ ${probabilities.targetCopies} remaining`}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    Max: {probabilities.maxTargetCopies}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bench Card */}
+                                    <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-700/50 shadow-2xl">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-yellow-500 flex items-center justify-center text-lg">
+                                                🎯
+                                            </div>
+                                            <h2 className="text-xl font-bold">Your Bench</h2>
+                                        </div>
+                                        <p className="text-sm text-gray-400 mb-4">
+                                            Same rarity/evo as target
+                                        </p>
+                                        <div>
+                                            <input 
+                                                type="number"
+                                                value={benchUnits}
+                                                onChange={(e) => setBenchUnits(Math.max(0, parseInt(e.target.value) || 0))}
+                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                                                min="0"
+                                            />
+                                            <div className="text-xs text-gray-400 mt-2">
+                                                Reduces total pool size
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Add Picks (formerly Regional Additions) */}
+                                <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border border-slate-700/50 shadow-2xl">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-xl">
+                                            🌍
+                                        </div>
+                                        <h2 className="text-2xl font-bold">Add Picks</h2>
+                                    </div>
+                                    
+                                    {/* Round 5 */}
+                                    <div className="mb-4 pb-4 border-b border-slate-700/50">
+                                        <label className="flex items-center gap-3 mb-3 cursor-pointer group">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={round5Enabled}
+                                                onChange={(e) => setRound5Enabled(e.target.checked)}
+                                                className="w-5 h-5 accent-green-500"
+                                            />
+                                            <span className="font-semibold text-lg group-hover:text-green-400 transition-colors">Round 5+ (Uncommon Add Picks)</span>
+                                        </label>
+                                        {round5Enabled && (
+                                            <div className="ml-8">
+                                                <label className="block text-sm text-gray-400 mb-1">Add picks (2★-max)</label>
+                                                <input 
+                                                    type="number"
+                                                    value={round5AddPicks}
+                                                    onChange={(e) => setRound5AddPicks(Math.max(0, parseInt(e.target.value) || 0))}
+                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 transition-all"
+                                                    min="0"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Round 8 */}
+                                    <div className="mb-4 pb-4 border-b border-slate-700/50">
+                                        <label className="flex items-center gap-3 mb-3 cursor-pointer group">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={round8Enabled}
+                                                onChange={(e) => setRound8Enabled(e.target.checked)}
+                                                className="w-5 h-5 accent-cyan-500"
+                                            />
+                                            <span className="font-semibold text-lg group-hover:text-cyan-400 transition-colors">Round 8+ (Rare Add Picks)</span>
+                                        </label>
+                                        {round8Enabled && (
+                                            <div className="ml-8">
+                                                <label className="block text-sm text-gray-400 mb-1">Add picks (2★-max)</label>
+                                                <input 
+                                                    type="number"
+                                                    value={round8AddPicks}
+                                                    onChange={(e) => setRound8AddPicks(Math.max(0, parseInt(e.target.value) || 0))}
+                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-cyan-500 transition-all"
+                                                    min="0"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Round 11 */}
+                                    <div className="mb-4">
+                                        <label className="flex items-center gap-3 mb-3 cursor-pointer group">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={round11Enabled}
+                                                onChange={(e) => setRound11Enabled(e.target.checked)}
+                                                className="w-5 h-5 accent-purple-500"
+                                            />
+                                            <span className="font-semibold text-lg group-hover:text-purple-400 transition-colors">Round 11+ (Epic Add Picks)</span>
+                                        </label>
+                                        {round11Enabled && (
+                                            <div className="ml-8">
+                                                <label className="block text-sm text-gray-400 mb-1">Add picks (2★-max)</label>
+                                                <input 
+                                                    type="number"
+                                                    value={round11AddPicks}
+                                                    onChange={(e) => setRound11AddPicks(Math.max(0, parseInt(e.target.value) || 0))}
+                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 transition-all"
+                                                    min="0"
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Portal Regionals */}
+                                <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-8 border border-slate-700/50 shadow-2xl">
+                                    <div className="flex items-center gap-3 mb-6">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-xl">
+                                            🌀
+                                        </div>
+                                        <h2 className="text-2xl font-bold">Portal-Specific Regionals</h2>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {Object.keys(portalRegionals).map(rarity => (
+                                            <div key={rarity} className="grid grid-cols-3 gap-3 items-center p-3 bg-slate-900/30 rounded-2xl">
+                                                <span className={`capitalize font-semibold ${rarityColors[rarity]}`}>
+                                                    {rarity}
+                                                </span>
+                                                <div>
+                                                    <label className="block text-xs text-gray-400 mb-1">2★-max</label>
+                                                    <input 
+                                                        type="number"
+                                                        value={portalRegionals[rarity].twoStar}
+                                                        onChange={(e) => updatePortalRegional(rarity, 'twoStar', e.target.value)}
+                                                        className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                        min="0"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-gray-400 mb-1">3★-max</label>
+                                                    <input 
+                                                        type="number"
+                                                        value={portalRegionals[rarity].threeStar}
+                                                        onChange={(e) => updatePortalRegional(rarity, 'threeStar', e.target.value)}
+                                                        className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                        min="0"
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Wild Mechanics - Collapsible */}
+                                <div className="bg-gradient-to-br from-amber-900/50 to-yellow-900/50 backdrop-blur-xl rounded-3xl p-8 border border-amber-500/30 shadow-2xl">
+                                    <button
+                                        onClick={() => setWildExpanded(!wildExpanded)}
+                                        className="w-full flex items-center justify-between mb-6 group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-yellow-500 flex items-center justify-center text-xl">
+                                                🌿
+                                            </div>
+                                            <h2 className="text-2xl font-bold">Wild Mechanics</h2>
+                                        </div>
+                                        <ChevronDown className={`w-6 h-6 transition-transform duration-200 ${wildExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {wildExpanded && (
+                                        <div className="space-y-6">
+                                            {/* Wild Controls */}
+                                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                                <label className="flex items-center gap-3 cursor-pointer px-4 py-3 bg-slate-900/30 rounded-2xl border border-slate-600/30 hover:border-amber-500/50 transition-all">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={targetIsWild}
+                                                        onChange={(e) => setTargetIsWild(e.target.checked)}
+                                                        className="w-5 h-5 accent-amber-500"
+                                                    />
+                                                    <div>
+                                                        <span className="font-semibold text-amber-400">Target is Wild</span>
+                                                        <div className="text-xs text-gray-400">Dual-path calculation</div>
+                                                    </div>
+                                                </label>
+
+                                                <label className="flex items-center gap-3 cursor-pointer px-4 py-3 bg-slate-900/30 rounded-2xl border border-slate-600/30 hover:border-amber-500/50 transition-all">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={pveRoundEnabled}
+                                                        onChange={(e) => setPveRoundEnabled(e.target.checked)}
+                                                        className="w-5 h-5 accent-amber-500"
+                                                    />
+                                                    <div>
+                                                        <span className="font-semibold text-amber-400">PvE Round</span>
+                                                        <div className="text-xs text-gray-400">+5% base boost</div>
+                                                    </div>
+                                                </label>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Units Owned</label>
+                                                <input 
+                                                    type="number"
+                                                    value={wildUnitsOwned}
+                                                    onChange={(e) => setWildUnitsOwned(Math.max(0, parseInt(e.target.value) || 0))}
+                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-all"
+                                                    min="0"
+                                                />
+                                                <div className="text-xs text-amber-400 mt-2">
+                                                    +1% boost per unit
+                                                    {pveRoundEnabled && targetIsWild && (
+                                                        <span className="ml-2 font-bold">
+                                                            (Total: +{probabilities.wildBoost.toFixed(1)}%)
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Base Wild Counts */}
+                                            <div className="border-t border-amber-700/30 pt-6">
+                                                <h3 className="font-bold text-lg mb-4 text-amber-300">Base Wild Counts</h3>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="p-3 bg-slate-900/30 rounded-xl">
+                                                        <div className="text-gray-400 text-sm">Common</div>
+                                                        <div className="font-bold">2 (2★-max)</div>
+                                                    </div>
+                                                    <div className="p-3 bg-slate-900/30 rounded-xl">
+                                                        <div className="text-green-400 text-sm">Uncommon</div>
+                                                        <div className="font-bold">4 (2★-max)</div>
+                                                    </div>
+                                                    <div className="p-3 bg-slate-900/30 rounded-xl">
+                                                        <div className="text-cyan-400 text-sm">Rare</div>
+                                                        <div className="font-bold">4 (2★-max)</div>
+                                                    </div>
+                                                    <div className="p-3 bg-slate-900/30 rounded-xl">
+                                                        <div className="text-purple-400 text-sm">Epic</div>
+                                                        <div className="font-bold">3 (1×3★, 2×2★)</div>
+                                                    </div>
+                                                    <div className="p-3 bg-slate-900/30 rounded-xl col-span-2">
+                                                        <div className="text-red-400 text-sm">Ultra</div>
+                                                        <div className="font-bold">1 (3★-max)</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Add Pick Wild Additions */}
+                                            <div className="border-t border-amber-700/30 pt-6">
+                                                <h3 className="font-bold text-lg mb-4 text-amber-300">Add Pick Wild Additions</h3>
+                                                <div className="space-y-3">
+                                                    {round5Enabled && (
+                                                        <div>
+                                                            <label className="block text-sm text-gray-400 mb-1">Round 5+ Uncommon Wilds (2★-max)</label>
+                                                            <input 
+                                                                type="number"
+                                                                value={wildAddPicks.uncommon}
+                                                                onChange={(e) => setWildAddPicks(prev => ({ ...prev, uncommon: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 transition-all"
+                                                                min="0"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {round8Enabled && (
+                                                        <div>
+                                                            <label className="block text-sm text-gray-400 mb-1">Round 8+ Rare Wilds (2★-max)</label>
+                                                            <input 
+                                                                type="number"
+                                                                value={wildAddPicks.rare}
+                                                                onChange={(e) => setWildAddPicks(prev => ({ ...prev, rare: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-cyan-500 transition-all"
+                                                                min="0"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {round11Enabled && (
+                                                        <div>
+                                                            <label className="block text-sm text-gray-400 mb-1">Round 11+ Epic Wilds (2★-max)</label>
+                                                            <input 
+                                                                type="number"
+                                                                value={wildAddPicks.epic}
+                                                                onChange={(e) => setWildAddPicks(prev => ({ ...prev, epic: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                                                className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 transition-all"
+                                                                min="0"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    {!round5Enabled && !round8Enabled && !round11Enabled && (
+                                                        <div className="text-sm text-gray-500 italic">
+                                                            Enable add pick rounds to configure Wild additions
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Regional Wild Additions */}
+                                            <div className="border-t border-amber-700/30 pt-6">
+                                                <h3 className="font-bold text-lg mb-4 text-amber-300">Regional Wild Additions</h3>
+                                                <div className="space-y-3">
+                                                    {Object.keys(wildRegionals).map(rarity => (
+                                                        <div key={rarity} className="grid grid-cols-3 gap-3 items-center p-3 bg-slate-900/30 rounded-2xl">
+                                                            <span className={`capitalize font-semibold ${rarityColors[rarity]}`}>
+                                                                {rarity}
+                                                            </span>
+                                                            <div>
+                                                                <label className="block text-xs text-gray-400 mb-1">2★-max</label>
+                                                                <input 
+                                                                    type="number"
+                                                                    value={wildRegionals[rarity].twoStar}
+                                                                    onChange={(e) => updateWildRegional(rarity, 'twoStar', e.target.value)}
+                                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all"
+                                                                    min="0"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-xs text-gray-400 mb-1">3★-max</label>
+                                                                <input 
+                                                                    type="number"
+                                                                    value={wildRegionals[rarity].threeStar}
+                                                                    onChange={(e) => updateWildRegional(rarity, 'threeStar', e.target.value)}
+                                                                    className="w-full bg-slate-900/50 border border-slate-600/50 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 transition-all"
+                                                                    min="0"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Column - Results */}
+                            <div className="space-y-6">
+                                {/* Main Probabilities Card */}
+                                <div className="bg-gradient-to-br from-cyan-900/50 to-blue-900/50 backdrop-blur-xl rounded-3xl p-6 border border-cyan-500/30 shadow-2xl">
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center">
+                                            <TrendingUp className="w-5 h-5 text-white" />
+                                        </div>
+                                        <h2 className="text-xl font-bold">Probabilities</h2>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="bg-black/30 backdrop-blur-sm rounded-2xl p-4 border border-cyan-500/20">
+                                            <div className="text-sm text-gray-400 mb-1">Per Slot (Target Only)</div>
+                                            <div className={`text-3xl font-bold ${probabilities.targetCopies === 0 ? 'text-red-400' : 'text-cyan-400'}`}>
+                                                {probabilities.perSlot.toFixed(3)}%
+                                            </div>
+                                            {probabilities.targetCopies === 0 && (
+                                                <div className="text-xs text-red-400 mt-1 font-semibold">❌ Pool depleted!</div>
+                                            )}
+                                            {pveRoundEnabled && targetIsWild && probabilities.wildBoost > 0 && (
+                                                <div className="text-xs text-amber-400 mt-1 font-semibold">
+                                                    🌿 +{probabilities.wildBoost.toFixed(1)}% Wild boost active
+                                                </div>
+                                            )}
+                                            {pveRoundEnabled && !targetIsWild && probabilities.wildBoost > 0 && (
+                                                <div className="text-xs text-orange-400 mt-1 font-semibold">
+                                                    ⚠️ -{probabilities.wildBoost.toFixed(1)}% (Wild penalty)
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-black/30 backdrop-blur-sm rounded-2xl p-4 border border-blue-500/20">
+                                            <div className="text-sm text-gray-400 mb-2">Per Refresh (6 slots)</div>
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-400">Without Ditto:</span>
+                                                    <span className="text-xl font-bold text-blue-400">
+                                                        {probabilities.perRefresh.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-400">With Ditto:</span>
+                                                    <span className={`text-xl font-bold ${dittoEnabled ? 'text-green-400' : 'text-gray-600'}`}>
+                                                        {probabilities.perRefreshWithDitto.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-black/30 backdrop-blur-sm rounded-2xl p-4 border border-green-500/20">
+                                            <div className="text-sm text-gray-400 mb-1">
+                                                Over {refreshes} Refreshes
+                                            </div>
+                                            <div className="text-4xl font-bold text-green-400">
+                                                {probabilities.overNRefreshes.toFixed(2)}%
+                                            </div>
+                                            {dittoEnabled && (
+                                                <div className="text-xs text-green-400 mt-1 font-semibold">✓ Ditto included</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Expected Refreshes */}
+                                <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-700/50 shadow-2xl">
+                                    <h3 className="font-bold text-lg mb-4">Expected Refreshes</h3>
+                                    {probabilities.targetCopies > 0 ? (
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                                <span className="text-gray-400">50% chance:</span>
+                                                <span className="font-bold text-lg">{probabilities.expectedFor50} refreshes</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                                <span className="text-gray-400">75% chance:</span>
+                                                <span className="font-bold text-lg">{probabilities.expectedFor75} refreshes</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                                <span className="text-gray-400">90% chance:</span>
+                                                <span className="font-bold text-lg">{probabilities.expectedFor90} refreshes</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-red-400 font-semibold">
+                                            ❌ No copies remaining in pool
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Gold Cost */}
+                                <div className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 backdrop-blur-xl rounded-3xl p-6 border border-yellow-500/30 shadow-2xl">
+                                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+                                        <span className="text-2xl">💰</span>
+                                        Gold Cost ({probabilities.copiesStillNeeded} more)
+                                    </h3>
+                                    {probabilities.copiesStillNeeded === 0 ? (
+                                        <div className="text-sm text-green-400 font-semibold">
+                                            ✓ You already have all copies needed!
+                                        </div>
+                                    ) : probabilities.targetCopies >= probabilities.copiesStillNeeded ? (
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
+                                                <span className="text-gray-400">~50% chance:</span>
+                                                <span className="font-bold text-xl text-yellow-400">{probabilities.goldFor50}g</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
+                                                <span className="text-gray-400">~75% chance:</span>
+                                                <span className="font-bold text-xl text-yellow-400">{probabilities.goldFor75}g</span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
+                                                <span className="text-gray-400">~90% chance:</span>
+                                                <span className="font-bold text-xl text-yellow-400">{probabilities.goldFor90}g</span>
+                                            </div>
+                                            <div className="text-xs text-gray-400 mt-2 text-center">
+                                                {evolutionGoal === 'firstEvo' ? 'First evolution' : 'Max evolution'} 
+                                                {copiesOwned > 0 && ` (${copiesOwned}/${probabilities.totalCopiesNeeded})`}
+                                                {dittoEnabled && ' • Ditto included'}
+                                                {pveRoundEnabled && targetIsWild && ' • Wild boost'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-sm text-red-400 font-semibold">
+                                            ❌ Insufficient copies ({probabilities.targetCopies}/{probabilities.copiesStillNeeded})
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Level Up Preview */}
+                                {probabilities.levelUpPreview && (
+                                    <div className="bg-gradient-to-br from-blue-900/50 to-indigo-900/50 backdrop-blur-xl rounded-3xl p-6 border border-blue-500/30 shadow-2xl">
+                                        <h3 className="font-bold text-lg mb-4">Level {probabilities.levelUpPreview.nextLevel} Preview</h3>
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
+                                                <span className="text-gray-400">Per refresh:</span>
+                                                <span className="font-bold text-lg text-blue-400">
+                                                    {probabilities.levelUpPreview.perRefresh.toFixed(2)}%
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center p-3 bg-black/30 rounded-xl">
+                                                <span className="text-gray-400">Improvement:</span>
+                                                <span className={`font-bold text-lg ${
+                                                    probabilities.levelUpPreview.improvementPercent > 0 ? 'text-green-400' : 'text-red-400'
+                                                }`}>
+                                                    {probabilities.levelUpPreview.improvementPercent > 0 ? '+' : ''}
+                                                    {probabilities.levelUpPreview.improvementPercent.toFixed(1)}%
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Pool Info */}
+                                <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-xl rounded-3xl p-6 border border-slate-700/50 shadow-2xl">
+                                    <h3 className="font-bold text-lg mb-4">Pool Info</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                            <span className="text-gray-400">Target remaining:</span>
+                                            <span className="font-bold">{probabilities.targetCopies} / {probabilities.maxTargetCopies}</span>
+                                        </div>
+                                        {benchUnits > 0 && (
+                                            <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl text-sm">
+                                                <span className="text-gray-500">Bench effect:</span>
+                                                <span className="text-gray-500">-{benchUnits} from pool</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                            <span className="text-gray-400 capitalize">Total {targetRarity}:</span>
+                                            <span className="font-bold">{probabilities.totalPoolSize}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-xl">
+                                            <span className="text-gray-400 capitalize">{targetRarity} rate:</span>
+                                            <span className="font-bold">{probabilities.rarityChance.toFixed(0)}%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-12 text-center">
+                            <div className="inline-block px-6 py-3 bg-slate-900/50 backdrop-blur-sm rounded-full border border-slate-700/50">
+                                <p className="text-sm text-gray-400">
+                                    Pool calculation with Wild mechanics • PvE boost system • 6 slots per refresh
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<PokemonAutoChessCalculator />, document.getElementById('root'));
+    </script>
+</body>
+</html>
