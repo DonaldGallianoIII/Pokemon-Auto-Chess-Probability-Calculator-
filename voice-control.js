@@ -1,6 +1,10 @@
 /**
  * PAC Analytics Voice Control System
  * Single unified voice interface - top right placement
+ * 
+ * PATCHED: Fixed premature command processing
+ * - Accumulates transcript until spacebar/button release
+ * - Converts spoken numbers ("seven") to digits ("7")
  */
 
 (function() {
@@ -27,9 +31,31 @@
     let startTime = 0;
     let timerInterval = null;
     let commandHistory = [];
+    let fullTranscript = '';  // PATCH: Accumulate full transcript
+    let lastConfidence = 0.9;
     
     // UI Elements
     let container, button, timer, status, transcript;
+    
+    /**
+     * Word to Number Conversion
+     * PATCH: Speech API often returns "seven" not "7"
+     */
+    const wordToNum = {
+        'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+        'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+        'ten': '10', 'eleven': '11', 'twelve': '12', 'thirteen': '13',
+        'fourteen': '14', 'fifteen': '15', 'sixteen': '16', 'seventeen': '17',
+        'eighteen': '18', 'nineteen': '19', 'twenty': '20'
+    };
+    
+    function convertWordsToNumbers(text) {
+        let result = text.toLowerCase();
+        for (const [word, digit] of Object.entries(wordToNum)) {
+            result = result.replace(new RegExp(`\\b${word}\\b`, 'g'), digit);
+        }
+        return result;
+    }
     
     /**
      * Initialize
@@ -53,7 +79,7 @@
     function setupRecognition() {
         recognition = new SpeechRecognition();
         recognition.lang = config.language;
-        recognition.continuous = false;
+        recognition.continuous = true;  // PATCH: Keep listening until manual stop
         recognition.interimResults = true;
         
         recognition.onstart = onStart;
@@ -190,7 +216,7 @@
         // Button
         button = document.createElement('button');
         button.id = 'voice-btn';
-        button.innerHTML = '🎤 VOICE ACTIVATION';
+        button.innerHTML = '🎤 HOLD TO SPEAK';
         
         // Timer
         timer = document.createElement('div');
@@ -214,7 +240,7 @@
             <div>• "level 7 rare have 3"</div>
             <div>• "scouted 4"</div>
             <div>• "bench 5"</div>
-            <div style="margin-top: 0.5rem;">Hold SPACE or click button</div>
+            <div style="margin-top: 0.5rem;">Hold SPACE or hold button</div>
         `;
         
         card.appendChild(button);
@@ -266,6 +292,7 @@
     function startListening() {
         if (isListening) return;
         try {
+            fullTranscript = '';  // PATCH: Reset accumulated transcript
             recognition.start();
             isListening = true;
             startTime = Date.now();
@@ -304,28 +331,54 @@
         transcript.textContent = 'Listening...';
     }
     
+    /**
+     * PATCHED: Accumulate results instead of processing immediately
+     */
     function onResult(event) {
-        const result = event.results[event.results.length - 1];
-        const text = result[0].transcript.trim();
-        const isFinal = result.isFinal;
-        const confidence = result[0].confidence;
+        let interimTranscript = '';
+        let finalTranscript = '';
         
-        transcript.textContent = text + (isFinal ? '' : '...');
-        
-        if (isFinal) {
-            button.classList.remove('listening');
-            status.textContent = 'Processing...';
-            processCommand(text, confidence);
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            const text = result[0].transcript;
+            
+            if (result.isFinal) {
+                finalTranscript += text + ' ';
+                lastConfidence = result[0].confidence;
+            } else {
+                interimTranscript += text;
+            }
         }
+        
+        // Accumulate final results
+        if (finalTranscript) {
+            fullTranscript += finalTranscript;
+        }
+        
+        // Show accumulated + current interim
+        const display = (fullTranscript + interimTranscript).trim();
+        transcript.textContent = display + (interimTranscript ? '...' : '');
+        
+        console.log(`🎤 Accumulated: "${fullTranscript.trim()}" | Interim: "${interimTranscript}"`);
     }
     
     function onError(event) {
         console.error('Recognition error:', event.error);
+        
+        // "no-speech" is fine, just means silence
+        if (event.error === 'no-speech') {
+            status.textContent = 'No speech detected';
+            return;
+        }
+        
         status.classList.add('error');
         status.textContent = 'Error: ' + event.error;
         setTimeout(resetUI, 2000);
     }
     
+    /**
+     * PATCHED: Process accumulated transcript on end
+     */
     function onEnd() {
         isListening = false;
         button.classList.remove('listening');
@@ -333,6 +386,18 @@
         status.classList.remove('active');
         clearInterval(timerInterval);
         timer.textContent = '0:00';
+        
+        // PATCH: Now process the full accumulated transcript
+        const finalText = fullTranscript.trim();
+        if (finalText) {
+            status.textContent = 'Processing...';
+            processCommand(finalText, lastConfidence);
+        } else {
+            status.textContent = 'No input';
+        }
+        
+        fullTranscript = '';  // Reset for next time
+        
         setTimeout(() => {
             if (!isListening) {
                 transcript.classList.remove('visible');
@@ -350,18 +415,20 @@
      * Process Command
      */
     function processCommand(text, confidence) {
-        console.log(`🎤 "${text}" (${(confidence * 100).toFixed(1)}%)`);
+        // PATCH: Convert words to numbers first
+        const converted = convertWordsToNumbers(text);
+        console.log(`🎤 Original: "${text}" → Converted: "${converted}" (${(confidence * 100).toFixed(1)}%)`);
         
         if (confidence < config.confidenceThreshold) {
-            transcript.innerHTML = '<span style="color: #f59e0b;">⚠️ Low confidence</span>';
+            transcript.innerHTML = `<span style="color: #f59e0b;">⚠️ Low confidence: "${text}"</span>`;
             status.textContent = 'Try again?';
             return;
         }
         
-        const commands = parseCommand(text);
+        const commands = parseCommand(converted);
         
         if (commands.length === 0) {
-            transcript.innerHTML = '<span style="color: #ef4444;">❌ Unknown command</span>';
+            transcript.innerHTML = `<span style="color: #ef4444;">❌ Unknown: "${text}"</span>`;
             status.textContent = 'Unknown';
             return;
         }
@@ -432,9 +499,9 @@
         }
         
         // EVOLUTION
-        if (/(two|2)\s*(star|\*)/i.test(original)) {
+        if (/(2)\s*(star|\*)/i.test(original)) {
             commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
-        } else if (/(three|3)\s*(star|\*)/i.test(original)) {
+        } else if (/(3)\s*(star|\*)/i.test(original)) {
             commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
         }
         
@@ -576,7 +643,9 @@
         isListening: () => isListening,
         getHistory: () => commandHistory,
         test: (text) => {
-            const cmds = parseCommand(text);
+            const converted = convertWordsToNumbers(text);
+            console.log(`Test: "${text}" → "${converted}"`);
+            const cmds = parseCommand(converted);
             cmds.forEach(executeCommand);
             return cmds;
         }
@@ -589,5 +658,5 @@
         setTimeout(init, 500);
     }
     
-    console.log('✓ Voice Control loaded');
+    console.log('✓ Voice Control v2 (patched) loaded');
 })();
