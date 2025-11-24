@@ -11,25 +11,25 @@
 (function() {
     'use strict';
     
-    // Chart color palette
+    // Chart color palette - Black, Silver, Neon Blue theme
     const colors = {
-        primary: '#38bdf8',      // Cyan
-        secondary: '#22d3ee',    // Lighter cyan
-        tertiary: '#a78bfa',     // Purple
-        positive: '#4ade80',     // Green
-        negative: '#f87171',     // Red
-        warning: '#fbbf24',      // Yellow
-        grid: '#1e293b',
-        axis: '#334155',
-        text: '#94a3b8',
-        background: 'rgba(15, 23, 42, 0.95)'
+        primary: '#00d9ff',          // Neon blue
+        secondary: '#0090cc',        // Darker neon blue
+        tertiary: '#c0c0c0',         // Silver
+        positive: '#4ade80',         // Green
+        negative: '#f87171',         // Red
+        warning: '#fbbf24',          // Yellow
+        grid: '#1a1a1a',
+        axis: '#333333',
+        text: '#a8a8a8',
+        background: 'rgba(0, 0, 0, 0.95)'
     };
     
     // Confidence thresholds
     const thresholds = [
-        { value: 50, color: 'rgba(56, 189, 248, 0.1)', label: '50%' },
-        { value: 75, color: 'rgba(56, 189, 248, 0.15)', label: '75%' },
-        { value: 90, color: 'rgba(56, 189, 248, 0.2)', label: '90%' }
+        { value: 50, color: 'rgba(0, 217, 255, 0.08)', label: '50%' },
+        { value: 75, color: 'rgba(0, 217, 255, 0.12)', label: '75%' },
+        { value: 90, color: 'rgba(0, 217, 255, 0.16)', label: '90%' }
     ];
     
     // Tooltip element
@@ -51,7 +51,7 @@
             .style('pointer-events', 'none')
             .style('z-index', '1000')
             .style('opacity', 0)
-            .style('box-shadow', '0 4px 20px rgba(0, 0, 0, 0.5)');
+            .style('box-shadow', `0 4px 20px rgba(0, 217, 255, 0.3)`);
         
         return tooltip;
     }
