@@ -107,36 +107,37 @@
             }
             
             #voice-card {
-                background: linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
-                border: 1px solid rgba(239, 68, 68, 0.3);
+                background: linear-gradient(135deg, rgba(20, 20, 20, 0.98), rgba(0, 0, 0, 0.98));
+                border: 1px solid rgba(0, 217, 255, 0.4);
                 border-radius: 1.5rem;
                 padding: 1.5rem;
                 backdrop-filter: blur(10px);
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                box-shadow: 0 8px 32px rgba(0, 217, 255, 0.3);
             }
             
             #voice-btn {
                 width: 100%;
                 padding: 1.25rem;
-                background: linear-gradient(135deg, #ef4444, #dc2626);
-                border: 3px solid #991b1b;
+                background: linear-gradient(135deg, #00d9ff, #0090cc);
+                border: 3px solid rgba(0, 217, 255, 0.6);
                 border-radius: 1rem;
                 color: white;
                 font-weight: 800;
                 font-size: 1.125rem;
                 cursor: pointer;
                 transition: all 0.15s;
-                box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+                box-shadow: 0 4px 20px rgba(0, 217, 255, 0.4);
             }
             
             #voice-btn:hover {
-                background: linear-gradient(135deg, #f87171, #ef4444);
+                background: linear-gradient(135deg, #22d3ee, #00d9ff);
                 transform: translateY(-2px);
+                box-shadow: 0 6px 30px rgba(0, 217, 255, 0.6);
             }
             
             #voice-btn.listening {
                 background: linear-gradient(135deg, #22c55e, #16a34a);
-                border-color: #166534;
+                border-color: rgba(34, 197, 94, 0.8);
                 animation: pulse 1.5s infinite;
             }
             
@@ -150,7 +151,7 @@
                 margin-top: 0.75rem;
                 font-size: 1.5rem;
                 font-weight: 700;
-                color: #38bdf8;
+                color: #c0c0c0;
                 font-variant-numeric: tabular-nums;
             }
             
@@ -162,7 +163,7 @@
                 text-align: center;
                 margin-top: 0.5rem;
                 font-size: 0.875rem;
-                color: #64748b;
+                color: #a8a8a8;
                 font-weight: 600;
             }
             
@@ -172,10 +173,11 @@
             #voice-transcript {
                 margin-top: 1rem;
                 padding: 0.75rem;
-                background: rgba(0, 0, 0, 0.3);
+                background: rgba(0, 0, 0, 0.5);
+                border: 1px solid rgba(0, 217, 255, 0.2);
                 border-radius: 0.75rem;
                 font-size: 0.875rem;
-                color: #94a3b8;
+                color: #a8a8a8;
                 min-height: 2rem;
                 max-height: 0;
                 overflow: hidden;
@@ -191,9 +193,9 @@
             #voice-help {
                 margin-top: 1rem;
                 padding-top: 1rem;
-                border-top: 1px solid rgba(239, 68, 68, 0.2);
+                border-top: 1px solid rgba(0, 217, 255, 0.3);
                 font-size: 0.75rem;
-                color: #64748b;
+                color: #a8a8a8;
                 line-height: 1.5;
             }
             
@@ -233,7 +235,7 @@
         const help = document.createElement('div');
         help.id = 'voice-help';
         help.innerHTML = `
-            <div style="color: #ef4444; font-weight: 700; margin-bottom: 0.5rem;">QUICK COMMANDS:</div>
+            <div style="color: #00d9ff; font-weight: 700; margin-bottom: 0.5rem;">QUICK COMMANDS:</div>
             <div>• "level 7 rare copy 3"</div>
             <div>• "scouted 4 bench 5"</div>
             <div>• "ditto on pve round"</div>
