@@ -2,9 +2,11 @@
  * PAC Analytics Voice Control System
  * Single unified voice interface - top right placement
  * 
- * PATCHED: Fixed premature command processing
- * - Accumulates transcript until spacebar/button release
+ * v3 PATCHES:
+ * - Fixed premature command processing (accumulates until release)
  * - Converts spoken numbers ("seven") to digits ("7")
+ * - Fixed regex capture bug: "level 5 scouted 2" no longer becomes "level 5 scouted 5"
+ * - Lowered confidence threshold to 0.35
  */
 
 (function() {
@@ -21,7 +23,7 @@
         language: 'en-US',
         continuous: false,
         interimResults: true,
-        confidenceThreshold: 0.6,
+        confidenceThreshold: 0.35,  // Lowered from 0.6
         pushToTalkKey: ' '
     };
     
@@ -31,7 +33,7 @@
     let startTime = 0;
     let timerInterval = null;
     let commandHistory = [];
-    let fullTranscript = '';  // PATCH: Accumulate full transcript
+    let fullTranscript = '';
     let lastConfidence = 0.9;
     
     // UI Elements
@@ -39,7 +41,6 @@
     
     /**
      * Word to Number Conversion
-     * PATCH: Speech API often returns "seven" not "7"
      */
     const wordToNum = {
         'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
@@ -70,7 +71,7 @@
         createUI();
         setupEvents();
         
-        console.log('🎤 Voice Control ready - Press SPACE to speak');
+        console.log('🎤 Voice Control v3 ready - Press SPACE to speak');
     }
     
     /**
@@ -79,7 +80,7 @@
     function setupRecognition() {
         recognition = new SpeechRecognition();
         recognition.lang = config.language;
-        recognition.continuous = true;  // PATCH: Keep listening until manual stop
+        recognition.continuous = true;
         recognition.interimResults = true;
         
         recognition.onstart = onStart;
@@ -92,7 +93,6 @@
      * Create UI
      */
     function createUI() {
-        // Add styles
         const style = document.createElement('style');
         style.textContent = `
             #voice-container {
@@ -206,33 +206,27 @@
         `;
         document.head.appendChild(style);
         
-        // Create container
         container = document.createElement('div');
         container.id = 'voice-container';
         
         const card = document.createElement('div');
         card.id = 'voice-card';
         
-        // Button
         button = document.createElement('button');
         button.id = 'voice-btn';
         button.innerHTML = '🎤 HOLD TO SPEAK';
         
-        // Timer
         timer = document.createElement('div');
         timer.id = 'voice-timer';
         timer.textContent = '0:00';
         
-        // Status
         status = document.createElement('div');
         status.id = 'voice-status';
         status.textContent = 'Ready';
         
-        // Transcript
         transcript = document.createElement('div');
         transcript.id = 'voice-transcript';
         
-        // Help
         const help = document.createElement('div');
         help.id = 'voice-help';
         help.innerHTML = `
@@ -292,7 +286,7 @@
     function startListening() {
         if (isListening) return;
         try {
-            fullTranscript = '';  // PATCH: Reset accumulated transcript
+            fullTranscript = '';
             recognition.start();
             isListening = true;
             startTime = Date.now();
@@ -331,9 +325,6 @@
         transcript.textContent = 'Listening...';
     }
     
-    /**
-     * PATCHED: Accumulate results instead of processing immediately
-     */
     function onResult(event) {
         let interimTranscript = '';
         let finalTranscript = '';
@@ -350,12 +341,10 @@
             }
         }
         
-        // Accumulate final results
         if (finalTranscript) {
             fullTranscript += finalTranscript;
         }
         
-        // Show accumulated + current interim
         const display = (fullTranscript + interimTranscript).trim();
         transcript.textContent = display + (interimTranscript ? '...' : '');
         
@@ -365,7 +354,6 @@
     function onError(event) {
         console.error('Recognition error:', event.error);
         
-        // "no-speech" is fine, just means silence
         if (event.error === 'no-speech') {
             status.textContent = 'No speech detected';
             return;
@@ -376,9 +364,6 @@
         setTimeout(resetUI, 2000);
     }
     
-    /**
-     * PATCHED: Process accumulated transcript on end
-     */
     function onEnd() {
         isListening = false;
         button.classList.remove('listening');
@@ -387,7 +372,6 @@
         clearInterval(timerInterval);
         timer.textContent = '0:00';
         
-        // PATCH: Now process the full accumulated transcript
         const finalText = fullTranscript.trim();
         if (finalText) {
             status.textContent = 'Processing...';
@@ -396,7 +380,7 @@
             status.textContent = 'No input';
         }
         
-        fullTranscript = '';  // Reset for next time
+        fullTranscript = '';
         
         setTimeout(() => {
             if (!isListening) {
@@ -415,7 +399,6 @@
      * Process Command
      */
     function processCommand(text, confidence) {
-        // PATCH: Convert words to numbers first
         const converted = convertWordsToNumbers(text);
         console.log(`🎤 Original: "${text}" → Converted: "${converted}" (${(confidence * 100).toFixed(1)}%)`);
         
@@ -445,7 +428,36 @@
     }
     
     /**
+     * Helper: Extract number after keyword (preferred) or before keyword (fallback)
+     * Returns the number and removes it from availableNumbers
+     */
+    function extractNumber(text, keywords, availableNumbers) {
+        const keywordPattern = keywords.join('|');
+        
+        // FIRST: Try "keyword NUMBER" pattern (preferred)
+        const afterMatch = text.match(new RegExp(`(?:${keywordPattern})\\s*(\\d+)`, 'i'));
+        if (afterMatch) {
+            const num = parseInt(afterMatch[1]);
+            if (availableNumbers.includes(num)) {
+                return num;
+            }
+        }
+        
+        // SECOND: Try "NUMBER keyword" pattern (fallback)
+        const beforeMatch = text.match(new RegExp(`(\\d+)\\s*(?:${keywordPattern})`, 'i'));
+        if (beforeMatch) {
+            const num = parseInt(beforeMatch[1]);
+            if (availableNumbers.includes(num)) {
+                return num;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
      * Parse Command - Natural Language
+     * v3: Fixed regex to prefer "keyword NUMBER" over "NUMBER keyword"
      */
     function parseCommand(text) {
         const commands = [];
@@ -453,7 +465,7 @@
         const allNumbers = original.match(/\d+/g)?.map(n => parseInt(n)) || [];
         let availableNumbers = [...allNumbers];
         
-        console.log(`📝 "${original}" → Numbers: [${availableNumbers}]`);
+        console.log(`📝 Parsing: "${original}" → Numbers: [${availableNumbers}]`);
         
         // LEVEL
         if (/level|lvl|lv\b/i.test(original)) {
@@ -462,8 +474,7 @@
             } else if (/down/i.test(original)) {
                 commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
             } else {
-                const levelMatch = original.match(/(?:level|lvl|lv)\s*(\d+)|(\d+)\s*(?:level|lvl)/i);
-                const levelNum = levelMatch ? parseInt(levelMatch[1] || levelMatch[2]) : availableNumbers.find(n => n >= 1 && n <= 9);
+                const levelNum = extractNumber(original, ['level', 'lvl', 'lv'], availableNumbers);
                 
                 if (levelNum && levelNum >= 1 && levelNum <= 9) {
                     commands.push({ type: 'level', value: levelNum, feedback: `Level ${levelNum}` });
@@ -472,12 +483,15 @@
                 }
             }
         } else if (availableNumbers.length === 1 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
+            // Single number with no context = assume level
             if (!/(own|have|got|scout|bench|refresh|star|copies)/i.test(original)) {
                 commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
                 availableNumbers = [];
             }
         } else if (availableNumbers.length > 0 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
-            const beforeNum = original.split(availableNumbers[0])[0];
+            // First number might be level if nothing precedes it
+            const firstNumIndex = original.indexOf(availableNumbers[0].toString());
+            const beforeNum = original.substring(0, firstNumIndex);
             if (!/(own|have|got|scout|bench|refresh)/i.test(beforeNum)) {
                 commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
                 availableNumbers.shift();
@@ -505,31 +519,34 @@
             commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
         }
         
-        // COPIES OWNED
-        const ownMatch = original.match(/(own|have|got|holding)\s*(\d+)|(\d+)\s*(own|have|got|copies|owned)/i);
-        if (ownMatch && !/(scout|bench|seen|taken)/i.test(original)) {
-            const num = parseInt(ownMatch[2] || ownMatch[3]);
-            commands.push({ type: 'copies', value: num, feedback: `Own ${num}` });
-            const idx = availableNumbers.indexOf(num);
-            if (idx !== -1) availableNumbers.splice(idx, 1);
+        // COPIES OWNED - v3 fixed
+        if (/(own|have|got|holding|copies)/i.test(original) && !/(scout|bench|seen|taken)/i.test(original)) {
+            const ownNum = extractNumber(original, ['own', 'have', 'got', 'holding', 'copies'], availableNumbers);
+            if (ownNum !== null) {
+                commands.push({ type: 'copies', value: ownNum, feedback: `Own ${ownNum}` });
+                const idx = availableNumbers.indexOf(ownNum);
+                if (idx !== -1) availableNumbers.splice(idx, 1);
+            }
         }
         
-        // SCOUTING
-        const scoutMatch = original.match(/(scout|scouted|seen|taken|opponent)\s*(\d+)|(\d+)\s*(scout|scouted|seen|taken)/i);
-        if (scoutMatch) {
-            const num = parseInt(scoutMatch[2] || scoutMatch[3]);
-            commands.push({ type: 'scouting', value: num, feedback: `Scout ${num}` });
-            const idx = availableNumbers.indexOf(num);
-            if (idx !== -1) availableNumbers.splice(idx, 1);
+        // SCOUTING - v3 fixed
+        if (/(scout|scouted|seen|taken|opponent)/i.test(original)) {
+            const scoutNum = extractNumber(original, ['scout', 'scouted', 'seen', 'taken', 'opponent'], availableNumbers);
+            if (scoutNum !== null) {
+                commands.push({ type: 'scouting', value: scoutNum, feedback: `Scout ${scoutNum}` });
+                const idx = availableNumbers.indexOf(scoutNum);
+                if (idx !== -1) availableNumbers.splice(idx, 1);
+            }
         }
         
-        // BENCH
-        const benchMatch = original.match(/bench\w*\s*(\d+)|(\d+)\s*(?:on\s*)?bench/i);
-        if (benchMatch) {
-            const num = parseInt(benchMatch[1] || benchMatch[2]);
-            commands.push({ type: 'bench', value: num, feedback: `Bench ${num}` });
-            const idx = availableNumbers.indexOf(num);
-            if (idx !== -1) availableNumbers.splice(idx, 1);
+        // BENCH - v3 fixed
+        if (/bench/i.test(original)) {
+            const benchNum = extractNumber(original, ['bench', 'benched'], availableNumbers);
+            if (benchNum !== null) {
+                commands.push({ type: 'bench', value: benchNum, feedback: `Bench ${benchNum}` });
+                const idx = availableNumbers.indexOf(benchNum);
+                if (idx !== -1) availableNumbers.splice(idx, 1);
+            }
         }
         
         // DITTO
@@ -539,11 +556,14 @@
             commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
         }
         
-        // REFRESHES
-        const refreshMatch = original.match(/(\d+)\s*(?:refresh|roll|check)|(?:refresh|check)\s*(\d+)/i);
-        if (refreshMatch) {
-            const num = parseInt(refreshMatch[1] || refreshMatch[2]);
-            commands.push({ type: 'refreshes', value: num, feedback: `${num} refreshes` });
+        // REFRESHES - v3 fixed
+        if (/(refresh|roll|check)/i.test(original)) {
+            const refreshNum = extractNumber(original, ['refresh', 'refreshes', 'roll', 'rolls', 'check', 'checks'], availableNumbers);
+            if (refreshNum !== null) {
+                commands.push({ type: 'refreshes', value: refreshNum, feedback: `${refreshNum} refreshes` });
+                const idx = availableNumbers.indexOf(refreshNum);
+                if (idx !== -1) availableNumbers.splice(idx, 1);
+            }
         }
         
         // QUERY
@@ -658,5 +678,5 @@
         setTimeout(init, 500);
     }
     
-    console.log('✓ Voice Control v2 (patched) loaded');
+    console.log('✓ Voice Control v3 loaded');
 })();
