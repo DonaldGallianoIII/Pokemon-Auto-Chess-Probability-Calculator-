@@ -474,43 +474,57 @@
  * Parse Command from Transcript - Natural Language Understanding
  * Handles conversational inputs like "I'm level 7 looking for rare"
  */
+/**
+ * Parse Command from Transcript - Natural Language Understanding
+ * Handles conversational inputs like "I'm level 7 looking for rare"
+ */
 function parseCommand(text) {
     const commands = [];
+    const original = text.toLowerCase();
     
-    // Normalize text - remove filler words but keep structure
-    const normalized = text
-        .replace(/\b(i'm|i am|im|my|the|a|an|is|are|at|for|looking for|want|need|got|have)\b/gi, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
+    // Extract all numbers first (before normalization removes context)
+    const allNumbers = original.match(/\d+/g)?.map(n => parseInt(n)) || [];
+    let availableNumbers = [...allNumbers]; // Keep a working copy
     
-    console.log(`📝 Normalized: "${normalized}"`);
+    console.log(`📝 Original: "${original}"`);
+    console.log(`🔢 Numbers found: [${availableNumbers.join(', ')}]`);
     
-    // Extract all numbers for context
-    const numbers = normalized.match(/\d+/g)?.map(n => parseInt(n)) || [];
-    
-    // LEVEL DETECTION
-    // Patterns: "level 7", "lvl 5", "7", "level up/down"
-    if (/level|lvl/.test(normalized)) {
-        if (/up/.test(normalized)) {
+    // LEVEL DETECTION - Check original text for better accuracy
+    // Patterns: "level 7", "lvl 5", "I'm level 3", "change level to 2", just "6"
+    if (/level|lvl|lv\b/i.test(original)) {
+        if (/up/i.test(original)) {
             commands.push({ type: 'level', value: 'up', feedback: 'Level up' });
-        } else if (/down/.test(normalized)) {
+        } else if (/down/i.test(original)) {
             commands.push({ type: 'level', value: 'down', feedback: 'Level down' });
         } else {
-            const levelNum = numbers.find(n => n >= 1 && n <= 9);
-            if (levelNum) {
+            // Find number near "level" keyword or first number 1-9
+            const levelMatch = original.match(/(?:level|lvl|lv)\s*(\d+)|(\d+)\s*(?:level|lvl)/i);
+            const levelNum = levelMatch ? parseInt(levelMatch[1] || levelMatch[2]) : availableNumbers.find(n => n >= 1 && n <= 9);
+            
+            if (levelNum && levelNum >= 1 && levelNum <= 9) {
                 commands.push({ type: 'level', value: levelNum, feedback: `Level ${levelNum}` });
-                numbers.splice(numbers.indexOf(levelNum), 1); // Remove used number
+                const idx = availableNumbers.indexOf(levelNum);
+                if (idx !== -1) availableNumbers.splice(idx, 1);
             }
         }
-    } else if (numbers.length > 0 && numbers[0] >= 1 && numbers[0] <= 9 && !/(own|have|got|scout|bench|refresh)/.test(normalized)) {
-        // Standalone number 1-9 without other context likely means level
-        commands.push({ type: 'level', value: numbers[0], feedback: `Level ${numbers[0]}` });
-        numbers.shift();
+    }
+    // Standalone single-digit number might be level if no other context
+    else if (availableNumbers.length === 1 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
+        if (!/(own|have|got|scout|bench|refresh|star|copies)/i.test(original)) {
+            commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
+            availableNumbers = [];
+        }
+    }
+    // Multiple numbers where first is 1-9
+    else if (availableNumbers.length > 0 && availableNumbers[0] >= 1 && availableNumbers[0] <= 9) {
+        if (!/(own|have|got|scout|bench|refresh)/i.test(original.split(availableNumbers[0])[0])) {
+            // If the number isn't preceded by ownership/scouting keywords, assume it's level
+            commands.push({ type: 'level', value: availableNumbers[0], feedback: `Level ${availableNumbers[0]}` });
+            availableNumbers.shift();
+        }
     }
     
     // RARITY DETECTION
-    // Patterns: "rare", "looking for epic", "targeting uncommon"
     const rarityMap = {
         'common': 'common',
         'uncommon': 'uncommon',
@@ -526,110 +540,73 @@ function parseCommand(text) {
     };
     
     for (const [keyword, rarity] of Object.entries(rarityMap)) {
-        if (normalized.includes(keyword)) {
+        if (new RegExp(`\\b${keyword}\\b`, 'i').test(original)) {
             commands.push({ type: 'rarity', value: rarity, feedback: rarity });
             break;
         }
     }
     
     // EVOLUTION DETECTION
-    // Patterns: "two star", "2 star", "three star max"
-    if (/two|2/.test(normalized) && /star|\*/.test(normalized)) {
+    if (/(two|2)\s*(star|\*)|2★/i.test(original)) {
         commands.push({ type: 'evolution', value: 'twoStar', feedback: '2★' });
-    } else if (/three|3/.test(normalized) && /star|\*/.test(normalized)) {
+    } else if (/(three|3)\s*(star|\*)|3★/i.test(original)) {
         commands.push({ type: 'evolution', value: 'threeStar', feedback: '3★' });
     }
     
     // COPIES OWNED
-    // Patterns: "have 3", "own 2", "got 5", "3 copies"
-    const ownedKeywords = /(own|have|got|copies)/;
-    if (ownedKeywords.test(normalized) && !/(scout|bench)/.test(normalized)) {
-        // Find number near ownership keywords
-        const ownMatch = normalized.match(/(own|have|got)\s*(\d+)|(\d+)\s*(own|have|got|copies)/);
-        if (ownMatch) {
-            const num = parseInt(ownMatch[2] || ownMatch[3]);
-            commands.push({ type: 'copies', value: num, feedback: `Own ${num}` });
-            const idx = numbers.indexOf(num);
-            if (idx !== -1) numbers.splice(idx, 1);
-        } else if (numbers.length > 0) {
-            // Fallback: first remaining number
-            commands.push({ type: 'copies', value: numbers[0], feedback: `Own ${numbers[0]}` });
-            numbers.shift();
-        }
+    const ownedMatch = original.match(/(own|have|got|holding)\s*(\d+)|(\d+)\s*(own|have|got|copies|owned)/i);
+    if (ownedMatch && !/(scout|bench|seen|taken)/i.test(original)) {
+        const num = parseInt(ownedMatch[2] || ownedMatch[3]);
+        commands.push({ type: 'copies', value: num, feedback: `Own ${num}` });
+        const idx = availableNumbers.indexOf(num);
+        if (idx !== -1) availableNumbers.splice(idx, 1);
     }
     
     // SCOUTING
-    // Patterns: "scouted 4", "seen 3", "taken 2", "opponents have 5"
-    const scoutKeywords = /(scout|scouted|seen|taken|opponent|enemy)/;
-    if (scoutKeywords.test(normalized)) {
-        const scoutMatch = normalized.match(/(scout|scouted|seen|taken)\s*(\d+)|(\d+)\s*(scout|scouted|seen|taken)/);
-        if (scoutMatch) {
-            const num = parseInt(scoutMatch[2] || scoutMatch[3]);
-            commands.push({ type: 'scouting', value: num, feedback: `Scouted ${num}` });
-            const idx = numbers.indexOf(num);
-            if (idx !== -1) numbers.splice(idx, 1);
-        } else if (numbers.length > 0) {
-            commands.push({ type: 'scouting', value: numbers[0], feedback: `Scouted ${numbers[0]}` });
-            numbers.shift();
-        }
+    const scoutMatch = original.match(/(scout|scouted|seen|taken|opponent|enemy)\s*(\d+)|(\d+)\s*(scout|scouted|seen|taken)/i);
+    if (scoutMatch) {
+        const num = parseInt(scoutMatch[2] || scoutMatch[3]);
+        commands.push({ type: 'scouting', value: num, feedback: `Scouted ${num}` });
+        const idx = availableNumbers.indexOf(num);
+        if (idx !== -1) availableNumbers.splice(idx, 1);
     }
     
     // BENCH
-    // Patterns: "bench 5", "benched 3", "5 on bench"
-    const benchKeywords = /bench/;
-    if (benchKeywords.test(normalized)) {
-        const benchMatch = normalized.match(/bench\w*\s*(\d+)|(\d+)\s*bench/);
-        if (benchMatch) {
-            const num = parseInt(benchMatch[1] || benchMatch[2]);
-            commands.push({ type: 'bench', value: num, feedback: `Bench ${num}` });
-            const idx = numbers.indexOf(num);
-            if (idx !== -1) numbers.splice(idx, 1);
-        } else if (numbers.length > 0) {
-            commands.push({ type: 'bench', value: numbers[0], feedback: `Bench ${numbers[0]}` });
-            numbers.shift();
-        }
+    const benchMatch = original.match(/bench\w*\s*(\d+)|(\d+)\s*(?:on\s*)?bench/i);
+    if (benchMatch) {
+        const num = parseInt(benchMatch[1] || benchMatch[2]);
+        commands.push({ type: 'bench', value: num, feedback: `Bench ${num}` });
+        const idx = availableNumbers.indexOf(num);
+        if (idx !== -1) availableNumbers.splice(idx, 1);
     }
     
     // DITTO
-    // Patterns: "add ditto", "with ditto", "ditto on", "remove ditto", "no ditto"
-    if (/(add|enable|include|with|turn on|yes).*ditto|ditto.*(on|enabled)/.test(normalized)) {
+    if (/(add|enable|include|with|turn on|yes)\s*ditto|ditto\s*(on|enabled)/i.test(original)) {
         commands.push({ type: 'ditto', value: true, feedback: 'Ditto on' });
-    } else if (/(remove|disable|exclude|without|turn off|no).*ditto|ditto.*(off|disabled)/.test(normalized)) {
+    } else if (/(remove|disable|exclude|without|turn off|no)\s*ditto|ditto\s*(off|disabled)/i.test(original)) {
         commands.push({ type: 'ditto', value: false, feedback: 'Ditto off' });
     }
     
     // REFRESHES
-    // Patterns: "10 refreshes", "check 15", "rolling 20 times"
-    const refreshKeywords = /refresh|roll|check/;
-    if (refreshKeywords.test(normalized)) {
-        const refreshMatch = normalized.match(/(\d+)\s*(refresh|roll|check|times)|refresh\s*(\d+)/);
-        if (refreshMatch) {
-            const num = parseInt(refreshMatch[1] || refreshMatch[3]);
-            commands.push({ type: 'refreshes', value: num, feedback: `${num} refreshes` });
-            const idx = numbers.indexOf(num);
-            if (idx !== -1) numbers.splice(idx, 1);
-        } else if (numbers.length > 0) {
-            // Last remaining number might be refreshes
-            const lastNum = numbers[numbers.length - 1];
-            if (lastNum > 9) { // Probably not a level
-                commands.push({ type: 'refreshes', value: lastNum, feedback: `${lastNum} refreshes` });
-                numbers.pop();
-            }
-        }
+    const refreshMatch = original.match(/(\d+)\s*(?:refresh|roll|check|times)|(?:refresh|check|roll)\s*(\d+)/i);
+    if (refreshMatch) {
+        const num = parseInt(refreshMatch[1] || refreshMatch[2]);
+        commands.push({ type: 'refreshes', value: num, feedback: `${num} refreshes` });
+        const idx = availableNumbers.indexOf(num);
+        if (idx !== -1) availableNumbers.splice(idx, 1);
     }
     
     // QUERY
-    // Patterns: "what are my odds", "tell me odds", "read results", "what's the probability"
-    if (/(what|tell|read|show).*(odd|probability|chance|percent)/.test(normalized)) {
+    if (/(what|tell|read|show).*(odd|probability|chance|percent)/i.test(original)) {
         commands.push({ type: 'query', feedback: 'Reading odds' });
     }
     
     // CLEAR/RESET
-    // Patterns: "clear all", "reset", "start over"
-    if (/(clear|reset|start over)/.test(normalized)) {
+    if (/(clear|reset|start over)/i.test(original)) {
         commands.push({ type: 'clear', feedback: 'Cleared' });
     }
     
+    console.log(`✅ Parsed commands: ${commands.length > 0 ? commands.map(c => c.feedback).join(', ') : 'none'}`);
     return commands;
 }
     function executeCommand(command) {
