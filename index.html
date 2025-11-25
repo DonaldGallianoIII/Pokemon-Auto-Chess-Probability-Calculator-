@@ -375,6 +375,30 @@
                 width: 100%;
                 margin-bottom: 1rem;
             }
+            
+            /* Disable sticky on mobile */
+            .lg\:sticky {
+                position: relative !important;
+            }
+        }
+        
+        /* Sticky results column scrollbar */
+        .space-y-6::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .space-y-6::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 3px;
+        }
+        
+        .space-y-6::-webkit-scrollbar-thumb {
+            background: rgba(0, 217, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .space-y-6::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 217, 255, 0.5);
         }
     </style>
 </head>
@@ -1190,11 +1214,11 @@
                                             <div className="w-8 h-8 rounded-full flex items-center justify-center text-lg" style={{background: 'linear-gradient(135deg, #c0c0c0, #808080)'}}>
                                                 👁️
                                             </div>
-                                            <h2 className="text-xl font-bold" style={{color: '#c0c0c0'}}>Scouting</h2>
+                                            <h2 className="text-xl font-bold" style={{color: '#c0c0c0'}}>Scouting (Your Specific Target)</h2>
                                         </div>
                                         <p className="text-sm text-gray-400 mb-4">
-                                            Your specific target on opponent boards
-                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild scouting in Wild Mechanics below)</span>}
+                                            Copies of YOUR SPECIFIC target on opponent boards
+                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild-specific scouting in Wild Mechanics below)</span>}
                                         </p>
                                         <div>
                                             <input 
@@ -1231,8 +1255,8 @@
                                             <h2 className="text-xl font-bold" style={{color: '#c0c0c0'}}>Your Bench</h2>
                                         </div>
                                         <p className="text-sm text-gray-400 mb-4">
-                                            Same rarity/evo as target (all units)
-                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild bench tracking in Wild Mechanics below)</span>}
+                                            Total units on your bench (same rarity/evo as target, ALL species)
+                                            {targetIsWild && <span className="block text-amber-400 mt-1">(Wild-specific bench tracking in Wild Mechanics below)</span>}
                                         </p>
                                         <div>
                                             <input 
@@ -1465,14 +1489,14 @@
                                                 <div className="border-t border-amber-700/30 pt-6">
                                                     <h3 className="font-bold text-lg mb-4 text-amber-300 flex items-center gap-2">
                                                         <span>🔍</span>
-                                                        <span>Wild Scouting</span>
+                                                        <span>Wild Scouting (Your Specific Target)</span>
                                                     </h3>
                                                     <p className="text-sm text-gray-400 mb-4">
-                                                        Track Wild units separately (same rarity/evo as your target)
+                                                        Track YOUR SPECIFIC Wild target separately (same rarity/evo as selected above)
                                                     </p>
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div>
-                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Units Taken (Opponents)</label>
+                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Target Taken (Opponents)</label>
                                                             <input 
                                                                 type="number"
                                                                 value={wildUnitsTaken}
@@ -1481,11 +1505,11 @@
                                                                 min="0"
                                                             />
                                                             <div className="text-xs text-gray-400 mt-2">
-                                                                Reduces Wild pool size
+                                                                Copies of YOUR Wild target on opponent boards
                                                             </div>
                                                         </div>
                                                         <div>
-                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Units Benched (Yours)</label>
+                                                            <label className="block text-sm font-semibold mb-2 text-gray-300">Wild Target Benched (Yours)</label>
                                                             <input 
                                                                 type="number"
                                                                 value={wildUnitsBenched}
@@ -1494,7 +1518,7 @@
                                                                 min="0"
                                                             />
                                                             <div className="text-xs text-gray-400 mt-2">
-                                                                Reduces Wild pool size
+                                                                Copies of YOUR Wild target on your bench
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1615,7 +1639,7 @@
                             </div>
 
                             {/* Right Column - Results */}
-                            <div className="space-y-6">
+                            <div className="space-y-6 lg:sticky lg:top-24 lg:self-start" style={{maxHeight: 'calc(100vh - 7rem)', overflowY: 'auto'}}>
                                 {/* Main Probabilities Card */}
                                 <div className="backdrop-blur-xl rounded-3xl p-6 border shadow-2xl" style={{
                                     background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.1), rgba(0, 144, 204, 0.05))',
