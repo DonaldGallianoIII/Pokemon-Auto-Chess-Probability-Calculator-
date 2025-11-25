@@ -568,13 +568,13 @@
         );
 
         const PokemonAutoChessCalculator = () => {
-            // Base game data
+            // Base game data - CORRECTED (Wild units removed)
             const baseGamePools = {
-                common: { twoStar: 2, threeStar: 19 },
-                uncommon: { twoStar: 5, threeStar: 15 },
-                rare: { twoStar: 3, threeStar: 15 },
-                epic: { twoStar: 1, threeStar: 16 },
-                ultra: { twoStar: 0, threeStar: 13 }
+                common: { twoStar: 0, threeStar: 17 },
+                uncommon: { twoStar: 1, threeStar: 15 },
+                rare: { twoStar: 0, threeStar: 14 },
+                epic: { twoStar: 0, threeStar: 14 },
+                ultra: { twoStar: 0, threeStar: 12 }
             };
 
             const poolCopies = {
@@ -597,7 +597,7 @@
                 9: { common: 5, uncommon: 20, rare: 35, epic: 30, ultra: 10 }
             };
 
-            // Base Wild counts
+            // Base Wild counts (removed from base roster)
             const baseWildCounts = {
                 common: { twoStar: 2, threeStar: 0 },
                 uncommon: { twoStar: 4, threeStar: 0 },
@@ -723,7 +723,7 @@
                 return counts;
             }, [round5Enabled, round8Enabled, round11Enabled, wildAddPicks, wildRegionals]);
 
-            // Calculate total pool for each rarity
+            // Calculate total pool for each rarity (NON-WILD ONLY)
             const calculateTotalPool = useMemo(() => {
                 const pools = {};
                 
@@ -731,7 +731,7 @@
                     let twoStarSpecies = baseGamePools[rarity].twoStar;
                     let threeStarSpecies = baseGamePools[rarity].threeStar;
 
-                    // Add round-based add picks (always 2★-max)
+                    // Add round-based add picks (always 2★-max) - NON-WILD ONLY
                     if (rarity === 'uncommon' && round5Enabled) {
                         twoStarSpecies += round5AddPicks;
                     }
@@ -742,7 +742,7 @@
                         twoStarSpecies += round11AddPicks;
                     }
 
-                    // Add portal regionals
+                    // Add portal regionals - NON-WILD ONLY
                     twoStarSpecies += portalRegionals[rarity].twoStar;
                     threeStarSpecies += portalRegionals[rarity].threeStar;
 
