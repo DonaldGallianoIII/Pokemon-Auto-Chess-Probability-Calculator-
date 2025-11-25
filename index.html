@@ -791,46 +791,47 @@
                     wildCountsForRarity.twoStar > 0 : 
                     wildCountsForRarity.threeStar > 0;
                 
-                // Calculate Wild pool size (for Path A denominator)
+                // Calculate Wild pool size
                 const totalWildCopiesBeforeReduction = targetEvo === 'twoStar' ?
                     wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
                     wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
                 
                 const totalWildCopies = Math.max(0, totalWildCopiesBeforeReduction - wildUnitsTaken - wildUnitsBenched);
                 
-                // Wild boost calculation - applies during PVE regardless of target type
+                // Wild boost calculation - CORRECTED MECHANIC
+                // PVE: 5% base + 1% per Wild owned
+                // Non-PVE: 1% per Wild owned (0% if you own none)
                 const wildBoost = pveRoundEnabled ? 
-                    (0.05 + (wildUnitsOwned * 0.01)) : 0;
+                    (0.05 + (wildUnitsOwned * 0.01)) : 
+                    (wildUnitsOwned * 0.01);
                 
-                // Base probability calculation
+                // Base probability calculation - CORRECTED
                 let perSlotProbTarget = 0;
                 let wildTargetImpossible = false;
                 
-                if (targetIsWild && !wildUnitsExist) {
-                    // Target is Wild but no Wild units exist for this rarity+evo combo
-                    perSlotProbTarget = 0;
-                    wildTargetImpossible = true;
-                } else if (targetCopies > 0 && totalPoolSize > 0) {
-                    const baseProb = rarityChance * (targetCopies / totalPoolSize);
-                    
-                    if (targetIsWild && pveRoundEnabled && wildUnitsExist && totalWildCopies > 0) {
-                        // Wild target: two paths
-                        // Path A: Wild boost triggers → correct rarity → specific Wild
-                        const pathA = wildBoost * rarityChance * (targetCopies / totalWildCopies);
-                        
-                        // Path B: Wild boost misses → normal shop
-                        const pathB = (1 - wildBoost) * baseProb;
-                        
-                        perSlotProbTarget = pathA + pathB;
-                    } else if (targetIsWild && !pveRoundEnabled && wildUnitsExist) {
-                        // Wild target but PVE not active - normal calculation
-                        perSlotProbTarget = baseProb;
-                    } else if (!targetIsWild && pveRoundEnabled) {
-                        // Non-Wild target during PVE: penalty
-                        perSlotProbTarget = baseProb * (1 - wildBoost);
+                if (targetIsWild) {
+                    // WILD TARGET: Only accessible through Wild boost
+                    if (!wildUnitsExist) {
+                        // No Wild units exist for this rarity+evo
+                        perSlotProbTarget = 0;
+                        wildTargetImpossible = true;
+                    } else if (totalWildCopies === 0) {
+                        // Wild units exist but all taken
+                        perSlotProbTarget = 0;
+                    } else if (wildBoost === 0) {
+                        // Wild boost impossible (non-PVE with 0 Wilds owned)
+                        perSlotProbTarget = 0;
                     } else {
-                        // Normal calculation
-                        perSlotProbTarget = baseProb;
+                        // Wild boost → Wild pool → specific Wild
+                        perSlotProbTarget = wildBoost * rarityChance * (targetCopies / totalWildCopies);
+                    }
+                } else {
+                    // NON-WILD TARGET: Normal pool with Wild boost penalty
+                    if (targetCopies > 0 && totalPoolSize > 0) {
+                        const baseProb = rarityChance * (targetCopies / totalPoolSize);
+                        
+                        // Wild boost steals slots from normal pool
+                        perSlotProbTarget = (1 - wildBoost) * baseProb;
                     }
                 }
                 
@@ -864,19 +865,16 @@
                     const nextRarityChance = nextLevelOdds[targetRarity] / 100;
                     let nextPerSlotProb = 0;
                     
-                    if (!wildTargetImpossible && targetCopies > 0 && totalPoolSize > 0) {
-                        const nextBaseProb = nextRarityChance * (targetCopies / totalPoolSize);
-                        
-                        if (targetIsWild && pveRoundEnabled && wildUnitsExist && totalWildCopies > 0) {
-                            const pathA = wildBoost * nextRarityChance * (targetCopies / totalWildCopies);
-                            const pathB = (1 - wildBoost) * nextBaseProb;
-                            nextPerSlotProb = pathA + pathB;
-                        } else if (targetIsWild && !pveRoundEnabled && wildUnitsExist) {
-                            nextPerSlotProb = nextBaseProb;
-                        } else if (!targetIsWild && pveRoundEnabled) {
-                            nextPerSlotProb = nextBaseProb * (1 - wildBoost);
-                        } else {
-                            nextPerSlotProb = nextBaseProb;
+                    if (targetIsWild) {
+                        // WILD TARGET at next level
+                        if (!wildTargetImpossible && totalWildCopies > 0 && wildBoost > 0) {
+                            nextPerSlotProb = wildBoost * nextRarityChance * (targetCopies / totalWildCopies);
+                        }
+                    } else {
+                        // NON-WILD TARGET at next level
+                        if (targetCopies > 0 && totalPoolSize > 0) {
+                            const nextBaseProb = nextRarityChance * (targetCopies / totalPoolSize);
+                            nextPerSlotProb = (1 - wildBoost) * nextBaseProb;
                         }
                     }
                     
@@ -1393,7 +1391,7 @@
                                                     />
                                                     <div>
                                                         <span className="font-semibold text-amber-400">Target is Wild</span>
-                                                        <div className="text-xs text-gray-400">Dual-path calculation</div>
+                                                        <div className="text-xs text-gray-400">Wild pool only</div>
                                                     </div>
                                                 </label>
 
@@ -1407,7 +1405,7 @@
                                                     />
                                                     <div>
                                                         <span className="font-semibold text-amber-400">PvE Round</span>
-                                                        <div className="text-xs text-gray-400">+5% base boost</div>
+                                                        <div className="text-xs text-gray-400">+5% Wild boost</div>
                                                     </div>
                                                 </label>
                                             </div>
@@ -1422,8 +1420,13 @@
                                                     min="0"
                                                 />
                                                 <div className="text-xs text-amber-400 mt-2">
-                                                    +1% boost per unit
-                                                    {pveRoundEnabled && targetIsWild && (
+                                                    +1% Wild boost per unit (all rounds)
+                                                    {pveRoundEnabled && (
+                                                        <span className="ml-2 font-bold">
+                                                            (Total: +{probabilities.wildBoost.toFixed(1)}% with PVE bonus)
+                                                        </span>
+                                                    )}
+                                                    {!pveRoundEnabled && wildUnitsOwned > 0 && (
                                                         <span className="ml-2 font-bold">
                                                             (Total: +{probabilities.wildBoost.toFixed(1)}%)
                                                         </span>
@@ -1452,7 +1455,7 @@
                                                                 min="0"
                                                             />
                                                             <div className="text-xs text-gray-400 mt-2">
-                                                                Reduces Wild pool for Path A
+                                                                Reduces Wild pool size
                                                             </div>
                                                         </div>
                                                         <div>
@@ -1465,7 +1468,7 @@
                                                                 min="0"
                                                             />
                                                             <div className="text-xs text-gray-400 mt-2">
-                                                                Reduces Wild pool for Path A
+                                                                Reduces Wild pool size
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1612,6 +1615,12 @@
                                                     <span>No Wild {targetRarity} {targetEvo === 'twoStar' ? '2★' : '3★'}-max units exist!</span>
                                                 </div>
                                             )}
+                                            {!probabilities.wildTargetImpossible && targetIsWild && wildBoost === 0 && (
+                                                <div className="text-xs text-orange-400 mt-2 font-semibold flex items-center gap-1">
+                                                    <span>⚠️</span>
+                                                    <span>Wild encounters require PVE or owning Wild units</span>
+                                                </div>
+                                            )}
                                             {!probabilities.wildTargetImpossible && probabilities.targetCopies === 0 && (
                                                 <div className="text-xs text-red-400 mt-1 font-semibold">❌ Pool depleted!</div>
                                             )}
@@ -1620,7 +1629,7 @@
                                                     🌿 +{probabilities.wildBoost.toFixed(1)}% Wild boost active
                                                 </div>
                                             )}
-                                            {!probabilities.wildTargetImpossible && pveRoundEnabled && !targetIsWild && probabilities.wildBoost > 0 && (
+                                            {!probabilities.wildTargetImpossible && !targetIsWild && probabilities.wildBoost > 0 && (
                                                 <div className="text-xs text-orange-400 mt-1 font-semibold">
                                                     ⚠️ -{probabilities.wildBoost.toFixed(1)}% (Wild penalty)
                                                 </div>
