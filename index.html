@@ -827,6 +827,9 @@
                     (0.05 + (wildUnitsOwned * 0.01)) : 
                     (wildUnitsOwned * 0.01);
                 
+                // Ensure wildBoost is a valid number
+                const safeWildBoost = isNaN(wildBoost) ? 0 : wildBoost;
+                
                 // Base probability calculation - CORRECTED
                 let perSlotProbTarget = 0;
                 let wildTargetImpossible = false;
@@ -840,12 +843,12 @@
                     } else if (totalWildCopies === 0) {
                         // Wild units exist but all taken
                         perSlotProbTarget = 0;
-                    } else if (wildBoost === 0) {
+                    } else if (safeWildBoost === 0) {
                         // Wild boost impossible (non-PVE with 0 Wilds owned)
                         perSlotProbTarget = 0;
                     } else {
                         // Wild boost → Wild pool → specific Wild
-                        perSlotProbTarget = wildBoost * rarityChance * (targetCopies / totalWildCopies);
+                        perSlotProbTarget = safeWildBoost * rarityChance * (targetCopies / totalWildCopies);
                     }
                 } else {
                     // NON-WILD TARGET: Normal pool with Wild boost penalty
@@ -853,7 +856,7 @@
                         const baseProb = rarityChance * (targetCopies / totalPoolSize);
                         
                         // Wild boost steals slots from normal pool
-                        perSlotProbTarget = (1 - wildBoost) * baseProb;
+                        perSlotProbTarget = (1 - safeWildBoost) * baseProb;
                     }
                 }
                 
@@ -889,14 +892,14 @@
                     
                     if (targetIsWild) {
                         // WILD TARGET at next level
-                        if (!wildTargetImpossible && totalWildCopies > 0 && wildBoost > 0) {
-                            nextPerSlotProb = wildBoost * nextRarityChance * (targetCopies / totalWildCopies);
+                        if (!wildTargetImpossible && totalWildCopies > 0 && safeWildBoost > 0) {
+                            nextPerSlotProb = safeWildBoost * nextRarityChance * (targetCopies / totalWildCopies);
                         }
                     } else {
                         // NON-WILD TARGET at next level
                         if (targetCopies > 0 && totalPoolSize > 0) {
                             const nextBaseProb = nextRarityChance * (targetCopies / totalPoolSize);
-                            nextPerSlotProb = (1 - wildBoost) * nextBaseProb;
+                            nextPerSlotProb = (1 - safeWildBoost) * nextBaseProb;
                         }
                     }
                     
@@ -935,8 +938,8 @@
                     rarityChance: rarityChance * 100,
                     levelUpPreview,
                     dittoProb: dittoProb * 100,
-                    wildBoost: wildBoost * 100,
-                    wildBoostRaw: wildBoost,  // Raw value for UI comparisons
+                    wildBoost: safeWildBoost * 100,
+                    wildBoostRaw: safeWildBoost,  // Raw value for UI comparisons
                     wildTargetImpossible,
                     wildUnitsExist
                 };
