@@ -771,11 +771,39 @@
                 
                 const rarityChance = rarityOdds[targetRarity] / 100;
                 
-                const maxTargetCopies = targetEvo === 'twoStar' ? 
-                    poolCopies[targetRarity].twoStar : 
-                    poolCopies[targetRarity].threeStar;
+                // Get Wild counts early - needed for both Wild and non-Wild targets
+                const wildCountsForRarity = totalWildCounts[targetRarity];
+                const wildUnitsExist = targetEvo === 'twoStar' ? 
+                    wildCountsForRarity.twoStar > 0 : 
+                    wildCountsForRarity.threeStar > 0;
                 
-                const targetCopies = Math.max(0, maxTargetCopies - copiesTaken);
+                // Calculate max copies and target copies based on whether target is Wild
+                let maxTargetCopies, targetCopies;
+                
+                if (targetIsWild) {
+                    // Wild target: use Wild pool counts
+                    const wildSpeciesCount = targetEvo === 'twoStar' ? 
+                        wildCountsForRarity.twoStar : 
+                        wildCountsForRarity.threeStar;
+                    
+                    if (wildSpeciesCount > 0) {
+                        // Each Wild species has poolCopies[rarity][evo] copies
+                        maxTargetCopies = targetEvo === 'twoStar' ? 
+                            poolCopies[targetRarity].twoStar : 
+                            poolCopies[targetRarity].threeStar;
+                        // For Wild targets, copiesTaken reduces the specific target
+                        targetCopies = Math.max(0, maxTargetCopies - copiesTaken);
+                    } else {
+                        maxTargetCopies = 0;
+                        targetCopies = 0;
+                    }
+                } else {
+                    // Non-Wild target: use normal pool counts
+                    maxTargetCopies = targetEvo === 'twoStar' ? 
+                        poolCopies[targetRarity].twoStar : 
+                        poolCopies[targetRarity].threeStar;
+                    targetCopies = Math.max(0, maxTargetCopies - copiesTaken);
+                }
                 
                 const relevantPoolBeforeBench = targetEvo === 'twoStar' ? 
                     pool.twoStarTotal : pool.threeStarTotal;
@@ -785,13 +813,7 @@
                 const relevantPoolAfterBench = Math.max(0, relevantPoolBeforeBench - benchUnits);
                 const totalPoolSize = relevantPoolAfterBench + otherPoolPortion;
                 
-                // Check if Wild units exist for target rarity+evo
-                const wildCountsForRarity = totalWildCounts[targetRarity];
-                const wildUnitsExist = targetEvo === 'twoStar' ? 
-                    wildCountsForRarity.twoStar > 0 : 
-                    wildCountsForRarity.threeStar > 0;
-                
-                // Calculate Wild pool size
+                // Calculate Wild pool size (wildCountsForRarity already calculated above)
                 const totalWildCopiesBeforeReduction = targetEvo === 'twoStar' ?
                     wildCountsForRarity.twoStar * poolCopies[targetRarity].twoStar :
                     wildCountsForRarity.threeStar * poolCopies[targetRarity].threeStar;
